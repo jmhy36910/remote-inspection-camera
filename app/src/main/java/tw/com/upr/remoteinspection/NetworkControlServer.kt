@@ -8,6 +8,8 @@ import java.net.ServerSocket
 import java.net.Socket
 import java.util.concurrent.Executors
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicBoolean
 
 /** Line-delimited JSON control channel for the Windows controller. */
 class NetworkControlServer(
@@ -21,6 +23,7 @@ class NetworkControlServer(
     private val executor = Executors.newCachedThreadPool()
     private val clients = CopyOnWriteArrayList<PrintWriter>()
     private val sockets = CopyOnWriteArrayList<Socket>()
+    private val previewInFlight = ConcurrentHashMap<PrintWriter, AtomicBoolean>()
     private val previewLock = Any()
     private var latestPreview: String? = null
     private var previewSenderRunning = false
@@ -41,6 +44,8 @@ class NetworkControlServer(
     }
 
     private fun handle(socket: Socket) {
+        socket.tcpNoDelay = true
+        socket.sendBufferSize = 32 * 1024
         sockets += socket
         var writer: PrintWriter? = null
         try {
@@ -50,6 +55,15 @@ class NetworkControlServer(
             while (running) {
                 val line = reader.readLine() ?: break
                 val command = JSONObject(line)
+                if (isAuthorized(command.optString("token"))) {
+                    if (command.optBoolean("previewFlowControl")) {
+                        previewInFlight.putIfAbsent(clientWriter, AtomicBoolean(false))
+                    }
+                    if (command.optString("type") == "preview_ack") {
+                        previewInFlight[clientWriter]?.set(false)
+                        continue
+                    }
+                }
                 val response = runCatching { onCommand(command) }
                     .getOrElse { JSONObject().put("ok", false).put("error", it.message ?: "invalid request") }
                 writer?.println(response.toString())
@@ -60,7 +74,7 @@ class NetworkControlServer(
         } catch (_: Throwable) {
             // A controller closing its socket is a normal disconnect, not an app failure.
         } finally {
-            writer?.let { clients.remove(it) }
+            writer?.let { clients.remove(it); previewInFlight.remove(it) }
             sockets.remove(socket)
             runCatching { socket.close() }
             runCatching { onClientCountChanged(clients.size) }
@@ -82,7 +96,11 @@ class NetworkControlServer(
         clients.forEach { writer ->
             executor.execute {
                 runCatching { writer.println(payload) }
-                    .onFailure { clients.remove(writer); runCatching { onClientCountChanged(clients.size) } }
+                    .onFailure {
+                        clients.remove(writer)
+                        previewInFlight.remove(writer)
+                        runCatching { onClientCountChanged(clients.size) }
+                    }
             }
         }
     }
@@ -96,6 +114,11 @@ class NetworkControlServer(
                 value
             } ?: return
             clients.forEach { writer ->
+                // One frame on the wire per negotiated client. A slow receiver
+                // skips new frames until it acknowledges the complete previous
+                // frame, instead of accumulating old frames in TCP buffers.
+                val inFlight = previewInFlight[writer]
+                if (inFlight != null && !inFlight.compareAndSet(false, true)) return@forEach
                 runCatching { writer.println(payload) }
                     .onFailure { clients.remove(writer); runCatching { onClientCountChanged(clients.size) } }
             }

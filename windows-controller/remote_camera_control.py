@@ -95,6 +95,7 @@ class Controller(tk.Tk):
         self.auto_vars = {}
         self.overall_mode = tk.StringVar(value="Mixed")
         self._build()
+        self.after(10, self._preview_tick)
 
     def _build(self):
         top = ttk.Frame(self, padding=10); top.pack(fill="x")
@@ -297,6 +298,7 @@ class Controller(tk.Tk):
             return
         try:
             self.sock = socket.create_connection((host, int(self.port.get())), timeout=3)
+            self.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
             self.sock.settimeout(3); self.status.set("Connected")
             self.local_config["last_host"] = host
             self._save_local_config()
@@ -415,6 +417,8 @@ class Controller(tk.Tk):
         payload = {"version": 1, "requestId": str(self.request_no), "type": command, **kwargs}
         if command != "pair":
             payload["token"] = self._token()
+        if command == "get_state":
+            payload["previewFlowControl"] = True
         try:
             with self.write_lock: self.sock.sendall((json.dumps(payload) + "\n").encode())
             if command == "capture": self.status.set("Capture requested")
@@ -448,14 +452,13 @@ class Controller(tk.Tk):
                     with open(path, "wb") as output: output.write(base64.b64decode(event["data"]))
                     self.after(0, lambda p=path: self.status.set("Photo saved: " + p))
                 elif event.get("event") == "preview":
-                    if not self.pc_preview_var.get():
-                        continue
                     with self.preview_lock:
                         self.latest_preview = event["data"]
-                        if self.preview_update_pending:
-                            continue
-                        self.preview_update_pending = True
-                    self.after(1, self._drain_preview)
+                    # No Tk calls here: they wait for the UI thread and prevent
+                    # the receiver from draining the socket during rendering.
+                    ack = {"version": 1, "type": "preview_ack", "token": self._token()}
+                    with self.write_lock:
+                        self.sock.sendall((json.dumps(ack) + "\n").encode())
                 elif event.get("event") == "preview_h264":
                     continue
                 elif False:
@@ -566,6 +569,16 @@ class Controller(tk.Tk):
         except tk.TclError as exc:
             self.status.set("Preview decode failed: " + str(exc))
 
+    def _preview_tick(self):
+        try:
+            if self.pc_preview_var.get():
+                self._drain_preview()
+            else:
+                with self.preview_lock:
+                    self.latest_preview = None
+        finally:
+            self.after(10, self._preview_tick)
+
     def _drain_preview(self):
         with self.preview_lock:
             encoded_jpeg = self.latest_preview
@@ -634,11 +647,7 @@ class Controller(tk.Tk):
                 self.display_offset = ((target_w - new_w) // 2, (target_h - new_h) // 2)
                 self.display_image_position = self.display_offset
                 self._show_preview(display)
-        with self.preview_lock:
-            if self.latest_preview:
-                self.after(1, self._drain_preview)
-            else:
-                self.preview_update_pending = False
+        self.preview_update_pending = False
 
     def apply_rotation(self, _event=None):
         labels = {"0°": 0, "90° clockwise": 90, "180°": 180, "270° clockwise": 270}

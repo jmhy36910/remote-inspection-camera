@@ -554,37 +554,23 @@ class CameraSessionController(private val cameraManager: CameraManager, private 
                 val streaming = previewEnabled && shouldStreamPreview()
                 val metering = autoIso != autoExposure && started - lastAutoAdjustMs >= 250L
                 if (!streaming && !metering) { handler.postDelayed(this, 250L); return }
-                val bitmap = runCatching { textureView.getBitmap(if (streaming) previewWidth else 32, if (streaming) previewHeight else 24) }.getOrNull()
+                // getBitmap resamples the already oriented texture. Use its
+                // displayed aspect ratio, not the landscape Camera2 buffer ratio.
+                val uprightWidth = if (displaySensorOrientation % 180 != 0) displayBufferHeight else displayBufferWidth
+                val uprightHeight = if (displaySensorOrientation % 180 != 0) displayBufferWidth else displayBufferHeight
+                if (uprightWidth <= 0 || uprightHeight <= 0) { handler.postDelayed(this, 34L); return }
+                val longestEdge = if (streaming) maxOf(previewWidth, previewHeight) else 32
+                val sampleScale = longestEdge.toFloat() / maxOf(uprightWidth, uprightHeight)
+                val sampleWidth = maxOf(1, (uprightWidth * sampleScale).toInt())
+                val sampleHeight = maxOf(1, (uprightHeight * sampleScale).toInt())
+                val bitmap = runCatching { textureView.getBitmap(sampleWidth, sampleHeight) }.getOrNull()
                 if (bitmap == null) { handler.postDelayed(this, 34L); return }
                 if (streaming && onPreviewBytes != null) {
-                    // The phone preview is portrait. Keep the same upright
-                    // orientation for JPEG transport, but center-crop the
-                    // landscape camera buffer to the requested portrait ratio
-                    // before scaling. This avoids a 16:9-to-9:16 stretch.
-                    val targetWidth = minOf(previewWidth, previewHeight)
-                    val targetHeight = maxOf(previewWidth, previewHeight)
-                    val targetRatio = targetWidth.toFloat() / targetHeight
-                    val sourceRatio = bitmap.width.toFloat() / bitmap.height
-                    val cropWidth: Int
-                    val cropHeight: Int
-                    if (sourceRatio > targetRatio) {
-                        cropHeight = bitmap.height
-                        cropWidth = (cropHeight * targetRatio).toInt().coerceIn(1, bitmap.width)
-                    } else {
-                        cropWidth = bitmap.width
-                        cropHeight = (cropWidth / targetRatio).toInt().coerceIn(1, bitmap.height)
-                    }
-                    val cropLeft = (bitmap.width - cropWidth) / 2
-                    val cropTop = (bitmap.height - cropHeight) / 2
-                    val cropped = Bitmap.createBitmap(bitmap, cropLeft, cropTop, cropWidth, cropHeight)
-                    val encoded = Bitmap.createScaledBitmap(cropped, targetWidth, targetHeight, true)
                     previewOutput.reset()
                     previewOutput.let { out ->
-                        encoded.compress(Bitmap.CompressFormat.JPEG, previewQuality, out)
+                        bitmap.compress(Bitmap.CompressFormat.JPEG, previewQuality, out)
                         onPreviewBytes.invoke(out.toByteArray())
                     }
-                    if (encoded !== cropped) encoded.recycle()
-                    if (cropped !== bitmap) cropped.recycle()
                 }
                 if (metering) {
                     val sample = Bitmap.createScaledBitmap(bitmap, 32, 24, false)

@@ -26,7 +26,9 @@ Create `local.properties` for the SDK if needed. No API key, database, or `.env`
 
 The web controller also asks for a PIN once and keeps its token in browser local storage. TCP commands, photo events, SSE, and MJPEG all require the token. Transport is still unencrypted HTTP/TCP on the private LAN, so do not expose these ports directly to the Internet. OEM Camera2 support varies.
 
-For the portrait phone UI, the phone and JPEG previews use the verified raw TextureView orientation without an additional rotation. JPEG center-crops the native landscape buffer and proportionally outputs portrait `720×1280`, matching the phone preview ratio without stretching; the YUV measurement preview keeps its separately verified orientation. Windows defaults to `AUTO · PHONE STREAM`, which performs **no rotation at all** and only FITs the received dimensions proportionally. Manual 0/90/180/270-degree overrides remain available for a camera with a different natural orientation.
+JPEG captures the complete TextureView content at the camera's oriented aspect ratio (for example, 720×1280), without cropping, an embedded black canvas, or additional rotation. Windows `AUTO · PHONE STREAM` proportionally FITs the received dimensions until one image edge reaches the window edge, leaving only necessary window margins when aspect ratios differ. YUV and original-size photo capture retain their existing pipelines.
+
+Live JPEG preview is latest-frame-first. Android permits at most one in-flight frame for each flow-control-aware PC, while the PC decode slot retains only the newest received frame. If the network or renderer falls behind, obsolete preview frames are dropped instead of accumulating in TCP or UI queues. Control commands and original-size photo events are not subject to this preview-drop policy.
 
 Windows saves the exact JPEG bytes received from the phone, preserving full resolution and EXIF Orientation without resizing or recompression. Standard EXIF-aware photo viewers therefore display portrait captures in the correct orientation.
 
