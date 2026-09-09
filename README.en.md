@@ -1,41 +1,121 @@
 # Remote Inspection Camera
 
-[繁體中文](README.md)
+[繁體中文](README.md) · [Latest release](https://github.com/jmhy36910/remote-inspection-camera/releases/latest) · [License](LICENSE)
 
-An Android Camera2 app with an embedded web controller and a Windows Python controller for camera settings, preview, capture, and ROI displacement measurement.
+A private-LAN Android Camera2 inspection camera. The phone provides camera preview and capture, while the embedded web controller or Windows controller provides remote operation. It includes camera controls, ROI displacement measurement, original-size capture, live JPEG preview, and optional grayscale YUV preview.
 
-Preview is capped at 30 FPS. Photo and preview resolution choices are generated from the selected camera's reported Camera2 capabilities instead of device-specific dimensions. Physical-camera access, RAW, manual controls, and achieved frame rate still depend on the OEM implementation.
+## Features and limits
 
-## Requirements and installation
+- Preview requests are capped at 30 FPS. Actual FPS, resolutions, physical cameras, RAW, manual controls, EIS/OIS, and stabilization behavior depend on each device's Camera2/OEM implementation.
+- Preview and photo sizes come from the selected camera's reported capabilities; no phone model is hard-coded.
+- JPEG preview uses the phone's actual portrait aspect ratio. Windows `AUTO · PHONE STREAM` uses proportional FIT with no crop or stretch.
+- Live preview is newest-frame-first. Network reception, decoding, and UI rendering are separate; obsolete preview frames are overwritten rather than blocking controls or capture.
+- Original-size photos preserve the Camera2 JPEG bytes and EXIF Orientation; Windows does not resize or recompress them.
 
-- Windows 10/11, JDK 17, Android SDK 35, Gradle 8.11.1
-- Android 8.0/API 26+, Camera2, and Wi-Fi
-- Python 3.11+ with Tk
+## Quick start
 
-```powershell
-git clone <repository-url>
-cd remote-inspection-camera
-.\bootstrap-android.ps1
-$env:ANDROID_SDK_ROOT = 'C:\Android\Sdk'
-.\build-android.ps1 -RunLint
-python -m venv .venv
-.\.venv\Scripts\python -m pip install -r requirements.txt
+### 1. Install the Android APK
+
+Download the APK from the [latest release](https://github.com/jmhy36910/remote-inspection-camera/releases/latest), or build it from source as described below:
+
+```text
+app/build/outputs/apk/debug/app-debug.apk
 ```
 
-Create `local.properties` for the SDK if needed. No API key, database, or `.env` is required. Install `app/build/outputs/apk/debug/app-debug.apk`, place phone and PC on the same private network, then run `python windows-controller/remote_camera_control.py`. On every app launch, a fresh six-digit PIN is shown first. The label changes to paired only after a PC authenticates with an existing token or completes PIN pairing. Enter the phone's current IP (no fixed IP is embedded), connect, enter the PIN, and select **Pair once**. The PIN expires after five minutes and becomes invalid immediately after success. A random token is stored in `%LOCALAPPDATA%\RemoteInspectionCamera\config.json`, so the same Windows user connecting to this app installation normally pairs only once, even if the phone's DHCP address changes. Generate another PIN from the app menu for a new device without revoking existing devices. A new PC, deleted local settings, reinstalled/cleared Android app data, or **Revoke all pairings** requires pairing again.
+Install it, start the app, grant camera/network permissions, and turn the camera on.
 
-The web controller also asks for a PIN once and keeps its token in browser local storage. TCP commands, photo events, SSE, and MJPEG all require the token. Transport is still unencrypted HTTP/TCP on the private LAN, so do not expose these ports directly to the Internet. OEM Camera2 support varies.
+### 2. Connect the Windows controller
 
-JPEG captures the complete TextureView content at the camera's oriented aspect ratio (for example, 720×1280), without cropping, an embedded black canvas, or additional rotation. Windows `AUTO · PHONE STREAM` proportionally FITs the received dimensions until one image edge reaches the window edge, leaving only necessary window margins when aspect ratios differ. YUV and original-size photo capture retain their existing pipelines.
+Put phone and PC on the same **private** network. Download the Windows ZIP from the Release page, extract it, and run `Machine Vision Camera Controller.exe`; or run it from source:
 
-Live JPEG preview is latest-frame-first. Android and PC each retain one replaceable newest-frame slot, while network reception, JPEG decoding, and UI rendering run separately. If the network or renderer falls behind, obsolete preview frames are overwritten instead of accumulating in application queues. Control commands and original-size photo events are not subject to this preview-drop policy. A paired PC automatically reconnects on restart using its stored IP and token.
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python -m pip install -r requirements.txt
+.\.venv\Scripts\python windows-controller\remote_camera_control.py
+```
 
-Windows saves the exact JPEG bytes received from the phone, preserving full resolution and EXIF Orientation without resizing or recompression. Standard EXIF-aware photo viewers therefore display portrait captures in the correct orientation.
+Enter the phone's current IP and TCP port `8765`, then select **Connect**.
 
-## Build and test
+### 3. Pair once
 
-`build-android.ps1 -RunLint` compiles and lints Android. Run `python -m py_compile windows-controller/remote_camera_control.py` for a basic controller check. There is no automated hardware test. `app`, `windows-controller`, `protocol`, `tools`, and `docs` contain the main components.
+1. The app displays a fresh six-digit PIN at startup.
+2. Enter it in the Windows controller and select **Pair once**.
+3. The controller saves its token at `%LOCALAPPDATA%\RemoteInspectionCamera\config.json` for that Windows user.
+
+After pairing, the controller reconnects on restart with its stored IP/token. If the phone's DHCP address changes, update the IP only; pairing remains valid. A PIN is needed again only for a new PC, deleted PC settings, cleared/reinstalled Android app data, or **Revoke all pairings**. PINs expire after five minutes and are invalidated immediately after a successful pairing.
+
+## Web controller
+
+From the same private network, open:
+
+```text
+http://PHONE_IP:8787/
+```
+
+It also requires a one-time PIN on first use. Its token stays only in that browser's local storage.
+
+## Security
+
+- TCP controls, photo events, SSE, and MJPEG require a paired token.
+- Transport is private-LAN HTTP/TCP with **no TLS**. Never expose ports `8765` or `8787` to the Internet.
+- Allow only private networks if the firewall asks.
+- This repository excludes tokens, credentials, installed dependencies, APK/EXE files, test photos, and build artifacts.
+
+## Build from source
+
+### Requirements
+
+- Windows 10/11
+- Android SDK Platform 36, suitable Build Tools, JDK 17, and an available JVM 21 Kotlin toolchain
+- Android 9 / API 28 or newer with Camera2 and Wi-Fi
+- Python 3.11+ with Tk for the Windows controller
+
+### Android
+
+```powershell
+git clone https://github.com/jmhy36910/remote-inspection-camera.git
+cd remote-inspection-camera
+$env:ANDROID_SDK_ROOT = 'C:\Android\Sdk'
+.\bootstrap-android.ps1
+.\build-android.ps1 -RunLint
+```
+
+Alternatively, create an untracked `local.properties` in the project root:
+
+```properties
+sdk.dir=C\:\\Android\\Sdk
+```
+
+### Windows controller
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python -m pip install -r requirements.txt
+.\.venv\Scripts\python windows-controller\remote_camera_control.py
+```
+
+## Verification
+
+```powershell
+# Android compile + lint
+.\build-android.ps1 -RunLint
+
+# Windows proportional-display unit tests
+.\.venv\Scripts\python -m unittest discover -s windows-controller -p 'test*.py' -v
+```
+
+Hardware behavior, Wi-Fi latency, camera capabilities, and achieved 30 FPS still need verification on the target phone and network.
+
+## Project structure
+
+| Path | Purpose |
+| --- | --- |
+| `app/` | Android Camera2 app and embedded web UI |
+| `windows-controller/` | Windows Tkinter controller, preview, and tests |
+| `protocol/` | JSON schema for the control protocol |
+| `docs/` | Build, power, and development notes |
+| `tools/` | Development utilities such as documentation generation |
 
 ## License and notice
 
-Source code is MIT-licensed; dependency licenses are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). This is non-profit research/learning work primarily generated with OpenAI Codex assistance. It is not an official third-party product. Credentials, installed dependencies, packages, test photos, and build outputs are excluded. Credible specific infringement reports will pause affected content pending review.
+The source is released under the [MIT License](LICENSE). See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for dependency licenses. This is non-profit research and learning work, primarily generated with OpenAI Codex assistance; it is not affiliated with or endorsed by phone, camera, or third-party brands. If a rights holder raises a specific credible infringement concern, affected content will be paused while it is reviewed.

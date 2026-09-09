@@ -1,54 +1,121 @@
 # Remote Inspection Camera（遠端檢測相機）
 
-[English](README.en.md)
+[English](README.en.md) · [最新版下載](https://github.com/jmhy36910/remote-inspection-camera/releases/latest) · [授權](LICENSE)
 
-Android Camera2 相機、手機內建 Web 控制頁與 Windows Python 控制器，可調整相機參數、預覽、拍照及 ROI 位移量測。
+適用於私人區域網路的 Android Camera2 檢測相機：手機端提供相機預覽與拍照，並可用內建 Web 控制頁或 Windows 控制器遠端操作。支援相機參數、ROI 位移量測、原尺寸拍照、JPEG 即時預覽與可選 YUV 灰階預覽。
 
-預覽最高為 30 FPS；照片與預覽解析度會依目前選取鏡頭的 Camera2 capability 自動產生，不綁定特定手機尺寸。進階 physical camera、RAW、手動控制與實際幀率仍取決於各手機 OEM 實作。
+## 功能與限制
 
-## 運行環境
+- 預覽最高要求為 30 FPS；實際 FPS、可用解析度、實體鏡頭、RAW、手動控制、EIS/OIS 均依手機 Camera2/OEM 實作而定。
+- 預覽與拍照尺寸依目前選取鏡頭的 capability 產生，不綁定特定手機型號。
+- JPEG 預覽使用手機實際直向比例；Windows `AUTO · PHONE STREAM` 會等比例 FIT，不裁切、不拉伸。
+- 即時預覽採最新幀優先：網路接收、解碼、UI 顯示分離；來不及處理的過期預覽會被覆寫，不阻塞控制或拍照。
+- 原尺寸照片直接保留手機 Camera2 JPEG bytes 與 EXIF Orientation，不由 Windows 重新縮放或壓縮。
 
-- Android 建置：Windows 10/11、JDK 17、Android SDK 35、Gradle 8.11.1
-- App：Android 8.0（API 26）以上，需 Camera2 與 Wi-Fi
-- Windows 控制器：Python 3.11+、Tk、`opencv-python`、`numpy`、`Pillow`
+## 快速開始
 
-## 安裝
+### 1. 下載或建置 Android APK
 
-```powershell
-git clone <repository-url>
-cd remote-inspection-camera
-.\bootstrap-android.ps1
-$env:ANDROID_SDK_ROOT = 'C:\Android\Sdk'
-.\build-android.ps1 -RunLint
-python -m venv .venv
-.\.venv\Scripts\python -m pip install -r requirements.txt
+直接使用 [最新版 Release](https://github.com/jmhy36910/remote-inspection-camera/releases/latest) 的 APK，或依下方「從原始碼建置」產生：
+
+```text
+app/build/outputs/apk/debug/app-debug.apk
 ```
 
-在 Android SDK 路徑建立 `local.properties`，內容如 `sdk.dir=C\:\\Android\\Sdk`，或設定 `ANDROID_SDK_ROOT`。APK 位於 `app/build/outputs/apk/debug/app-debug.apk`。本專案不需要 API key、資料庫或 `.env`。
+安裝後啟動 App，允許相機與網路權限，開啟相機。
 
-## 使用方式
+### 2. 連接 Windows 控制器
 
-安裝並啟動 App，允許相機與網路權限，確認手機和電腦在同一私人網路，再執行 `python windows-controller/remote_camera_control.py`。App 每次啟動會先顯示新的 6 位數 PIN；只有電腦以既有 token 驗證成功，或新電腦以 PIN 配對成功後，畫面才改為「已配對」。輸入手機目前的 IP（程式不內建固定 IP）、連線，再輸入 PIN 並按 **Pair once**。PIN 有效 5 分鐘且成功後立即失效；Windows 會將隨機 token 保存在目前使用者的 `%LOCALAPPDATA%\RemoteInspectionCamera\config.json`，同一個 Windows 使用者連接這個 App 安裝日後不需重複輸入 PIN，即使手機 DHCP 位址改變也可沿用。新裝置可從 App 選單另外產生 PIN，不會撤銷既有裝置；更換電腦、清除本機設定、重裝／清除 App 資料，或選擇「撤銷所有配對」後需重新配對。
+手機與 Windows 電腦必須在同一個**私人**網路。可下載 Release 的 Windows ZIP，解壓後執行 `Machine Vision Camera Controller.exe`；或從原始碼執行：
 
-Web 控制頁第一次也要輸入 PIN，token 僅保存在該瀏覽器的 local storage。TCP 控制、照片事件、SSE 與 MJPEG 都要求 token。傳輸目前仍是私人 LAN 上的純 HTTP/TCP，沒有 TLS 加密，因此不要直接暴露到公網；防火牆若詢問，僅允許私人網路。實際 Camera2 功能依手機 OEM 能力而異。
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python -m pip install -r requirements.txt
+.\.venv\Scripts\python windows-controller\remote_camera_control.py
+```
 
-JPEG 依相機影像直向後的實際比例擷取完整 TextureView 內容（例如 720×1280），不裁切、不加入黑色畫布，也不額外旋轉。Windows 的 `AUTO · PHONE STREAM` 按收到的寬高等比例 FIT，放大至影像的一邊接觸視窗邊緣；比例不同時只在視窗留下必要黑邊。YUV 與原尺寸拍照維持原有流程。
+在控制器輸入手機目前 IP 與 TCP port `8765`，按 **Connect**。
 
-即時 JPEG 預覽採最新幀優先：Android 與 PC 都只有一個可覆寫的最新幀槽，網路接收、JPEG 解碼與 UI 顯示分離執行。網路或顯示速度不足時會直接覆寫過期預覽幀，不讓舊畫面在應用程式佇列中持續累積；控制指令與原尺寸拍照事件不受此丟幀策略影響。已配對的 PC 重新開啟時會自動用儲存的 IP/token 重新連線。
+### 3. 首次配對
 
-Windows 儲存照片時直接寫入手機傳來的原始 JPEG bytes，保留完整解析度與 EXIF Orientation，不重新縮放或壓縮。支援 EXIF 的一般相片檢視器會依方向標記正確顯示直向照片。
+1. App 啟動時會顯示新的 6 位數 PIN。
+2. Windows 控制器輸入 PIN，按 **Pair once**。
+3. 成功後，該 Windows 使用者將 token 儲存在 `%LOCALAPPDATA%\RemoteInspectionCamera\config.json`。
 
-## Build / Test
+已配對的控制器重開時會使用儲存的 IP/token 自動連線；手機的 DHCP IP 改變後只需更新 IP，不必重新配對。下列情況才需要 PIN：新電腦、刪除本機設定、清除/重裝 App 資料，或在 App 選擇「撤銷所有配對」。PIN 有效 5 分鐘，成功配對後立即失效。
 
-`build-android.ps1 -RunLint` 執行 Android compile 與 lint。Windows controller 目前以 `python -m py_compile windows-controller/remote_camera_control.py` 做基本驗證；repository 尚無自動化硬體測試。
+## 網頁控制器
+
+在同一私人網路以瀏覽器開啟：
+
+```text
+http://手機IP:8787/
+```
+
+首次也必須輸入 App 顯示的 PIN。token 僅存於該瀏覽器的 local storage。
+
+## 安全性
+
+- TCP 控制、照片事件、SSE、MJPEG 都需要配對 token。
+- 傳輸是私人 LAN 上的 HTTP/TCP，**未使用 TLS**；不可把 port `8765` 或 `8787` 暴露到 Internet。
+- 防火牆提示時僅允許私人網路。
+- repository 不包含 token、credentials、本機 dependency、APK/EXE、測試照片或 build artifacts。
+
+## 從原始碼建置
+
+### Requirements
+
+- Windows 10/11
+- Android SDK Platform 36、適當 Build Tools、JDK 17；Kotlin 編譯需要可用的 JVM 21 toolchain
+- Android 9（API 28）以上、Camera2、Wi-Fi
+- Python 3.11+ 與 Tk（Windows 控制器）
+
+### Android
+
+```powershell
+git clone https://github.com/jmhy36910/remote-inspection-camera.git
+cd remote-inspection-camera
+$env:ANDROID_SDK_ROOT = 'C:\Android\Sdk'
+.\bootstrap-android.ps1
+.\build-android.ps1 -RunLint
+```
+
+若不使用 `ANDROID_SDK_ROOT`，在根目錄建立未追蹤的 `local.properties`，例如：
+
+```properties
+sdk.dir=C\:\\Android\\Sdk
+```
+
+### Windows 控制器
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python -m pip install -r requirements.txt
+.\.venv\Scripts\python windows-controller\remote_camera_control.py
+```
+
+## 驗證
+
+```powershell
+# Android compile + lint
+.\build-android.ps1 -RunLint
+
+# Windows 顯示比例單元測試
+.\.venv\Scripts\python -m unittest discover -s windows-controller -p 'test*.py' -v
+```
+
+硬體、Wi-Fi 延遲、鏡頭 capability 與實際 30 FPS 仍需在目標手機/網路上驗證。
 
 ## 專案結構
 
-- `app/`：Android Camera2 App 與內建 Web UI
-- `windows-controller/`：Windows GUI
-- `protocol/`：控制協定 JSON Schema
-- `tools/`、`docs/`：文件產生工具與開發說明
+| 目錄/檔案 | 用途 |
+| --- | --- |
+| `app/` | Android Camera2 App 與內建 Web UI |
+| `windows-controller/` | Windows Tkinter 控制器、預覽與測試 |
+| `protocol/` | 控制協定 JSON Schema |
+| `docs/` | 建置、功耗與開發說明 |
+| `tools/` | 文件產生等開發工具 |
 
 ## 授權與聲明
 
-Source code 依 [MIT License](LICENSE) 開源，第三方元件授權請見 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。本專案定位為非營利研究與學習，主要由 OpenAI Codex 協助生成。不是手機、相機或第三方品牌的官方產品。Repository 不含 credentials、本機 dependency、安裝包、測試照片或 build artifacts。若權利人提出具體侵權項目，將先暫停相關內容並處理。
+原始碼採用 [MIT License](LICENSE)；第三方元件授權見 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。本專案為非營利研究與學習用途，主要由 OpenAI Codex 協助生成；不代表或隸屬任何手機、相機或第三方品牌。若權利人提出具體侵權項目，將先暫停受影響內容並處理。
