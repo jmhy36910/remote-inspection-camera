@@ -149,7 +149,11 @@ class MainActivity : ComponentActivity() {
         var shutterBlack by remember { mutableStateOf(false) }
         val characteristics = remember(selectedId) { cameraManager.getCameraCharacteristics(selectedId) }
         val streamMap = remember(selectedId) { characteristics.get(android.hardware.camera2.CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP) }
-        val resolutionOptions = remember(selectedId) { streamMap?.getOutputSizes(android.graphics.ImageFormat.JPEG)?.take(30).orEmpty().toList() }
+        val resolutionOptions = remember(selectedId) {
+            streamMap?.getOutputSizes(android.graphics.ImageFormat.JPEG).orEmpty().toList()
+                .distinctBy { "${it.width}x${it.height}" }
+                .sortedByDescending { it.width.toLong() * it.height.toLong() }
+        }
         val previewResolutionOptions = remember(selectedId) {
             val reported = streamMap?.getOutputSizes(android.graphics.SurfaceTexture::class.java).orEmpty().toList()
             val practical = reported.filter { maxOf(it.width, it.height) <= 1920 && minOf(it.width, it.height) >= 320 }
@@ -272,7 +276,7 @@ class MainActivity : ComponentActivity() {
                         if (autoFocus && editingParameter != "對焦") actualFocus?.let { focusDiopter = it; focusText = "%.2f".format(it) }
                         // CONTROL_ZOOM_RATIO is a capture-result value.  On
                         // Some OEM logical/physical cameras can briefly report
-                        // reported as 1.0 even though the requested crop is
+                        // 1.0 even though the requested crop is
                         // already active.  Never overwrite the user's
                         // requested zoom with that transient result; the
                         // requested value is the source of truth for both
