@@ -26,6 +26,7 @@ class Controller(tk.Tk):
         self.write_lock = threading.Lock()
         self.preview_lock = threading.Lock()
         self.latest_preview = None
+        self.last_preview_payload = None
         self.latest_frame = None
         self.display_scale = 1.0
         self.display_scale_x = 1.0
@@ -167,6 +168,7 @@ class Controller(tk.Tk):
         self.preview.bind("<ButtonPress-1>", self._preview_press)
         self.preview.bind("<B1-Motion>", self._preview_drag)
         self.preview.bind("<ButtonRelease-1>", self._preview_release)
+        self.preview.bind("<Configure>", self._preview_resized)
         self.preview_info = tk.StringVar(value="Preview: -- FPS · --×--")
         ttk.Label(self.preview_window, textvariable=self.preview_info, padding=(10, 0)).pack(anchor="w")
         roi = ttk.LabelFrame(self, text="TCP ball ROI / displacement", padding=6); roi.pack(fill="x", padx=10)
@@ -568,6 +570,7 @@ class Controller(tk.Tk):
             encoded_jpeg = self.latest_preview
             self.latest_preview = None
         if encoded_jpeg:
+            self.last_preview_payload = encoded_jpeg
             raw = base64.b64decode(encoded_jpeg)
             frame = None
             display = None
@@ -616,9 +619,11 @@ class Controller(tk.Tk):
                     sx = sy = scale
                 elif mode == "ORIGINAL":
                     sx = sy = 1.0
-                else:  # FIT: preserve aspect ratio, no crop, fill one dimension.
-                    sx = sy = min(target_w / frame_width, target_h / frame_height)
-                new_w = max(1, int(frame_width * sx)); new_h = max(1, int(frame_height * sy))
+                else:  # FIT: calculate one aspect-preserving integer size.
+                    new_w, new_h = self._fit_dimensions(frame_width, frame_height, target_w, target_h)
+                    sx, sy = new_w / frame_width, new_h / frame_height
+                if mode != "FIT":
+                    new_w = max(1, round(frame_width * sx)); new_h = max(1, round(frame_height * sy))
                 display = display.resize((new_w, new_h), Image.Resampling.BILINEAR)
                 self.display_scale_x = sx
                 self.display_scale_y = sy
@@ -673,8 +678,28 @@ class Controller(tk.Tk):
                 if changed_v: self.ball_template = cv2.flip(self.ball_template, 0)
             self._last_flip_horizontal = self.flip_horizontal.get()
             self._last_flip_vertical = self.flip_vertical.get()
-        # The next decoded frame recalculates the mapping using the new mode.
-        self._draw_overlay()
+        self._redraw_last_preview()
+
+    @staticmethod
+    def _fit_dimensions(frame_width, frame_height, target_width, target_height):
+        """Return the largest no-crop integer size with the source aspect ratio."""
+        if frame_width <= 0 or frame_height <= 0:
+            return 1, 1
+        scale = min(max(1, target_width) / frame_width, max(1, target_height) / frame_height)
+        return max(1, round(frame_width * scale)), max(1, round(frame_height * scale))
+
+    def _preview_resized(self, _event=None):
+        if self.display_mode.get().upper() in ("FIT", "STRETCH"):
+            self.after_idle(self._redraw_last_preview)
+
+    def _redraw_last_preview(self):
+        if not self.last_preview_payload or self.preview_update_pending:
+            self._draw_overlay()
+            return
+        with self.preview_lock:
+            self.latest_preview = self.last_preview_payload
+            self.preview_update_pending = True
+        self.after_idle(self._drain_preview)
 
     def _preview_press(self, event):
         if self.calibration_mode:
