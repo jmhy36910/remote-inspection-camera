@@ -28,5 +28,4 @@ Create `local.properties` for the SDK if needed. No API key, database, or `.env`
 
 ## License and notice
 
-Source code is MIT-licensed, non-profit research/learning work primarily generated with OpenAI Codex assistance. It is not an official third-party product. Dependencies retain their licenses. Credentials, installed dependencies, packages, test photos, and build outputs are excluded. Credible specific infringement reports will pause affected content pending review.
-
+Source code is MIT-licensed; dependency licenses are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). This is non-profit research/learning work primarily generated with OpenAI Codex assistance. It is not an official third-party product. Credentials, installed dependencies, packages, test photos, and build outputs are excluded. Credible specific infringement reports will pause affected content pending review.

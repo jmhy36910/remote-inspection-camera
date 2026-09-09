@@ -41,5 +41,4 @@ python -m venv .venv
 
 ## 授權與聲明
 
-Source code 依 [MIT License](LICENSE) 開源，定位為非營利研究與學習，主要由 OpenAI Codex 協助生成。不是手機、相機或第三方品牌的官方產品。OpenCV、Android 與其他 dependency 各自適用其授權；repository 不含 credentials、本機 dependency、安裝包、測試照片或 build artifacts。若權利人提出具體侵權項目，將先暫停相關內容並處理。
-
+Source code 依 [MIT License](LICENSE) 開源，第三方元件授權請見 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。本專案定位為非營利研究與學習，主要由 OpenAI Codex 協助生成。不是手機、相機或第三方品牌的官方產品。Repository 不含 credentials、本機 dependency、安裝包、測試照片或 build artifacts。若權利人提出具體侵權項目，將先暫停相關內容並處理。
