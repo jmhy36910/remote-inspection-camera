@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Remote Inspection Camera Control v1",
+  "type": "object",
+  "required": ["version", "requestId", "type"],
+  "properties": {
+    "version": {"const": 1},
+    "requestId": {"type": "string", "minLength": 1},
+    "expectedStateRevision": {"type": "integer", "minimum": 0},
+    "type": {"enum": ["get_state", "scan_hidden", "set_camera", "set_focus", "set_iso", "set_exposure_us", "set_zoom", "set_temperature_k", "camera_power", "capture", "profile"]},
+    "value": {},
+    "enabled": {"type": "boolean"}
+  },
+  "additionalProperties": true
+}
