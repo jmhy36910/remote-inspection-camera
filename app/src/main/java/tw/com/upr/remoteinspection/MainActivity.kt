@@ -148,6 +148,7 @@ class MainActivity : ComponentActivity() {
         var previewFpsMenuExpanded by remember { mutableStateOf(false) }
         var shutterBlack by remember { mutableStateOf(false) }
         val characteristics = remember(selectedId) { cameraManager.getCameraCharacteristics(selectedId) }
+        val sensorOrientation = characteristics.get(android.hardware.camera2.CameraCharacteristics.SENSOR_ORIENTATION) ?: 0
         val streamMap = remember(selectedId) { characteristics.get(android.hardware.camera2.CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP) }
         val resolutionOptions = remember(selectedId) {
             streamMap?.getOutputSizes(android.graphics.ImageFormat.JPEG).orEmpty().toList()
@@ -355,7 +356,14 @@ class MainActivity : ComponentActivity() {
                             Text(if (rawMode) "RAW + JPG" else "JPG", style = MaterialTheme.typography.labelMedium)
                         }
                         BoxWithConstraints(Modifier.fillMaxWidth().weight(0.48f).clip(androidx.compose.foundation.shape.RoundedCornerShape(20.dp)).background(Color.Black), contentAlignment = androidx.compose.ui.Alignment.Center) {
-                            val ratio = previewWidth.toFloat() / previewHeight.toFloat()
+                            val displayDegrees = when (texture?.display?.rotation ?: android.view.Surface.ROTATION_0) {
+                                android.view.Surface.ROTATION_90 -> 90
+                                android.view.Surface.ROTATION_180 -> 180
+                                android.view.Surface.ROTATION_270 -> 270
+                                else -> 0
+                            }
+                            val swapsDimensions = ((sensorOrientation - displayDegrees + 360) % 180) != 0
+                            val ratio = if (swapsDimensions) previewHeight.toFloat() / previewWidth.toFloat() else previewWidth.toFloat() / previewHeight.toFloat()
                             val fittedWidth = minOf(maxWidth, maxHeight * ratio)
                             AndroidView(
                                 factory = { context -> TextureView(context).apply {
