@@ -58,6 +58,7 @@ class Controller(tk.Tk):
         self.pixels_per_mm = None
         self.current_zoom = 1.0
         self.rotation_degrees = 0
+        self.applied_rotation_degrees = 0
         self.display_mode = tk.StringVar(value="FIT")
         self.display_zoom = tk.DoubleVar(value=1.0)
         self.flip_horizontal = tk.BooleanVar(value=False)
@@ -134,8 +135,8 @@ class Controller(tk.Tk):
         ttk.Checkbutton(photo_bar, text="Inspection RAW", variable=self.raw_mode_var, command=self.apply_raw_mode).pack(side="left", padx=6)
         rotate_bar = ttk.Frame(self, padding=(10, 0, 10, 4)); rotate_bar.pack(fill="x")
         ttk.Label(rotate_bar, text="PC rotation").pack(side="left")
-        self.rotation_var = tk.StringVar(value="0°")
-        ttk.Combobox(rotate_bar, textvariable=self.rotation_var, state="readonly", width=12, values=("0°", "90° clockwise", "180°", "270° clockwise")).pack(side="left", padx=5)
+        self.rotation_var = tk.StringVar(value="AUTO · PHONE PORTRAIT")
+        ttk.Combobox(rotate_bar, textvariable=self.rotation_var, state="readonly", width=24, values=("AUTO · PHONE PORTRAIT", "0°", "90° clockwise", "180°", "270° clockwise")).pack(side="left", padx=5)
         self.rotation_combo = rotate_bar.winfo_children()[-1]
         self.rotation_combo.bind("<<ComboboxSelected>>", self.apply_rotation)
         ttk.Label(self, textvariable=self.status, padding=(10, 0)).pack(anchor="w")
@@ -582,13 +583,15 @@ class Controller(tk.Tk):
             if display is not None or frame is not None:
                 if display is None:
                     display = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), mode="RGB")
-                if self.rotation_degrees == 90:
+                frame_rotation = self._effective_rotation(display.width, display.height, self.rotation_var.get(), self.rotation_degrees)
+                self.applied_rotation_degrees = frame_rotation
+                if frame_rotation == 90:
                     frame = cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
                     display = display.transpose(Image.Transpose.ROTATE_270)
-                elif self.rotation_degrees == 180:
+                elif frame_rotation == 180:
                     frame = cv2.rotate(frame, cv2.ROTATE_180)
                     display = display.transpose(Image.Transpose.ROTATE_180)
-                elif self.rotation_degrees == 270:
+                elif frame_rotation == 270:
                     frame = cv2.rotate(frame, cv2.ROTATE_90_COUNTERCLOCKWISE)
                     display = display.transpose(Image.Transpose.ROTATE_90)
                 if self.flip_horizontal.get():
@@ -640,12 +643,20 @@ class Controller(tk.Tk):
     def apply_rotation(self, _event=None):
         labels = {"0°": 0, "90° clockwise": 90, "180°": 180, "270° clockwise": 270}
         selected = labels.get(self.rotation_var.get(), 0)
-        if selected == self.rotation_degrees:
+        if selected == self.rotation_degrees and self.rotation_var.get() != "AUTO · PHONE PORTRAIT":
             return
         self.rotation_degrees = selected
         self.clear_roi()
         self.calibration_points.clear()
-        self.status.set("PC preview rotation: %d° · ROI reset" % selected)
+        self.status.set("PC preview rotation: %s · ROI reset" % self.rotation_var.get())
+        self._redraw_last_preview()
+
+    @staticmethod
+    def _effective_rotation(width, height, mode, manual_degrees):
+        """The phone UI is portrait; rotate only landscape frames in AUTO."""
+        if mode == "AUTO · PHONE PORTRAIT":
+            return 90 if width > height else 0
+        return manual_degrees
 
     def _set_display_transform(self, _frame_width, _frame_height):
         """Invalidate the current display mapping before the next frame."""

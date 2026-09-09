@@ -32,6 +32,10 @@ python -m venv .venv
 
 Web 控制頁第一次也要輸入 PIN，token 僅保存在該瀏覽器的 local storage。TCP 控制、照片事件、SSE 與 MJPEG 都要求 token。傳輸目前仍是私人 LAN 上的純 HTTP/TCP，沒有 TLS 加密，因此不要直接暴露到公網；防火牆若詢問，僅允許私人網路。實際 Camera2 功能依手機 OEM 能力而異。
 
+Windows 預覽預設為 `AUTO · PHONE PORTRAIT`：收到橫向 JPEG 時先自動旋轉成直向，再用旋轉後的實際寬高等比例 FIT；收到直向 JPEG 時不重複旋轉。若個別鏡頭方向不同，可用 0°／90°／180°／270° 手動覆寫。
+
+Windows 儲存照片時直接寫入手機傳來的原始 JPEG bytes，保留完整解析度與 EXIF Orientation，不重新縮放或壓縮。支援 EXIF 的一般相片檢視器會依方向標記正確顯示直向照片。
+
 ## Build / Test
 
 `build-android.ps1 -RunLint` 執行 Android compile 與 lint。Windows controller 目前以 `python -m py_compile windows-controller/remote_camera_control.py` 做基本驗證；repository 尚無自動化硬體測試。

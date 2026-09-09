@@ -26,6 +26,10 @@ Create `local.properties` for the SDK if needed. No API key, database, or `.env`
 
 The web controller also asks for a PIN once and keeps its token in browser local storage. TCP commands, photo events, SSE, and MJPEG all require the token. Transport is still unencrypted HTTP/TCP on the private LAN, so do not expose these ports directly to the Internet. OEM Camera2 support varies.
 
+The Windows preview defaults to `AUTO · PHONE PORTRAIT`: a received landscape JPEG is rotated to portrait first, then fitted proportionally using the post-rotation dimensions. An already portrait JPEG is not rotated again. Manual 0/90/180/270-degree overrides remain available for cameras with a different orientation.
+
+Windows saves the exact JPEG bytes received from the phone, preserving full resolution and EXIF Orientation without resizing or recompression. Standard EXIF-aware photo viewers therefore display portrait captures in the correct orientation.
+
 ## Build and test
 
 `build-android.ps1 -RunLint` compiles and lints Android. Run `python -m py_compile windows-controller/remote_camera_control.py` for a basic controller check. There is no automated hardware test. `app`, `windows-controller`, `protocol`, `tools`, and `docs` contain the main components.
