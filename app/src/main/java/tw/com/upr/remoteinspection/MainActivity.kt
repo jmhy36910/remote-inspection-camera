@@ -34,7 +34,10 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.foundation.text.KeyboardActions
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import org.json.JSONObject
@@ -296,6 +299,19 @@ class MainActivity : ComponentActivity() {
                 startWithActiveControls()
                 cameraOn = true
             }
+        }
+        // Android may suspend Camera2 while this activity is temporarily in
+        // the background.  Reopen only when the user had left this camera ON.
+        val lifecycleOwner = LocalLifecycleOwner.current
+        val resumeCamera by rememberUpdatedState {
+            if (cameraOn && surfaceReady && controller != null) startWithActiveControls()
+        }
+        DisposableEffect(lifecycleOwner) {
+            val observer = LifecycleEventObserver { _, event ->
+                if (event == Lifecycle.Event.ON_RESUME) resumeCamera()
+            }
+            lifecycleOwner.lifecycle.addObserver(observer)
+            onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
         }
         val darkTheme = isSystemInDarkTheme()
         MaterialTheme(colorScheme = if (darkTheme) darkColorScheme(
