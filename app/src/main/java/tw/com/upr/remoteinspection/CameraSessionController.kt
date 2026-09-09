@@ -355,7 +355,7 @@ class CameraSessionController(private val cameraManager: CameraManager, private 
         previewWidth = width.coerceIn(320, 1280)
         previewHeight = height.coerceIn(320, 1920)
         previewQuality = quality.coerceIn(30, 90)
-        previewFps = fps.coerceIn(1, 60)
+        previewFps = fps.coerceIn(1, 30)
         resolvePreviewFps()
         return effectivePreviewFps
     }

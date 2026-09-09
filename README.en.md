@@ -4,6 +4,8 @@
 
 An Android Camera2 app with an embedded web controller and a Windows Python controller for camera settings, preview, capture, and ROI displacement measurement.
 
+Preview is capped at 30 FPS. Photo and preview resolution choices are generated from the selected camera's reported Camera2 capabilities instead of device-specific dimensions. Physical-camera access, RAW, manual controls, and achieved frame rate still depend on the OEM implementation.
+
 ## Requirements and installation
 
 - Windows 10/11, JDK 17, Android SDK 35, Gradle 8.11.1

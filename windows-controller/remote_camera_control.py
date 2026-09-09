@@ -107,8 +107,9 @@ class Controller(tk.Tk):
         ttk.Button(camera_bar, text="Select camera", command=self.select_camera).pack(side="left")
         ttk.Button(camera_bar, text="Search hidden", command=self.scan_hidden).pack(side="left", padx=5)
         ttk.Label(camera_bar, text="Preview").pack(side="left", padx=(12, 3))
-        self.preview_config = tk.StringVar(value="720×960 · 30 FPS")
-        ttk.Combobox(camera_bar, textvariable=self.preview_config, state="readonly", width=20, values=("480×640 · 15 FPS", "720×960 · 30 FPS", "720×960 · 60 FPS", "900×1200 · 30 FPS", "1080×1440 · 30 FPS")).pack(side="left")
+        self.preview_config = tk.StringVar(value="Auto · 30 FPS")
+        self.preview_combo = ttk.Combobox(camera_bar, textvariable=self.preview_config, state="readonly", width=20, values=("Auto · 30 FPS",))
+        self.preview_combo.pack(side="left")
         ttk.Button(camera_bar, text="Apply", command=self.apply_preview_config).pack(side="left", padx=3)
         ttk.Button(camera_bar, text="Open preview window", command=self.show_preview_window).pack(side="left", padx=5)
         preview_switches = ttk.Frame(self, padding=(10, 0, 10, 4)); preview_switches.pack(fill="x")
@@ -320,6 +321,10 @@ class Controller(tk.Tk):
 
     def apply_preview_config(self):
         text = self.preview_config.get().replace("×", "x")
+        if text.startswith("Auto"):
+            self.send("set_preview_config", fps=30)
+            self.status.set("Adaptive preview @ 30 FPS")
+            return
         try:
             size, fps_text = text.split("·")
             width, height = [int(v.strip()) for v in size.strip().split("x")]
@@ -419,6 +424,16 @@ class Controller(tk.Tk):
             if self.sock: self.after(0, lambda: self.status.set("Preview/control connection lost"))
 
     def _apply_phone_state(self, state):
+        preview_sizes = state.get("previewSizes") or []
+        if preview_sizes:
+            choices = tuple("%s · 30 FPS" % str(size).replace("x", "×") for size in preview_sizes)
+            try:
+                self.preview_combo.configure(values=choices)
+                current = "%s×%s · 30 FPS" % (state.get("previewWidth"), state.get("previewHeight"))
+                if current in choices and self.preview_config.get() not in choices:
+                    self.preview_config.set(current)
+            except tk.TclError:
+                pass
         # Camera2 focus capability is lens-dependent. Do not leave the PC
         # slider at a hard-coded 10D when the phone reports a larger range.
         try:
@@ -933,7 +948,7 @@ class Controller(tk.Tk):
             return None
         # Hough operates on a compact edge image; the final center is mapped
         # back to the full-resolution preview. 220 px keeps this bounded even
-        # when the incoming preview is 900×1200.
+        # when the incoming preview uses a different phone-reported size.
         scale = min(1.0, 220.0 / max(crop.shape[:2]))
         work = cv2.resize(crop, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA) if scale < 1.0 else crop
         blur = cv2.GaussianBlur(work, (3, 3), 0)

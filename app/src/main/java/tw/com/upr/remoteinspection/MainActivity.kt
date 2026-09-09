@@ -150,9 +150,18 @@ class MainActivity : ComponentActivity() {
         val characteristics = remember(selectedId) { cameraManager.getCameraCharacteristics(selectedId) }
         val streamMap = remember(selectedId) { characteristics.get(android.hardware.camera2.CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP) }
         val resolutionOptions = remember(selectedId) { streamMap?.getOutputSizes(android.graphics.ImageFormat.JPEG)?.take(30).orEmpty().toList() }
+        val previewResolutionOptions = remember(selectedId) {
+            val reported = streamMap?.getOutputSizes(android.graphics.SurfaceTexture::class.java).orEmpty().toList()
+            val practical = reported.filter { maxOf(it.width, it.height) <= 1920 && minOf(it.width, it.height) >= 320 }
+            (if (practical.isNotEmpty()) practical else reported)
+                .distinctBy { "${it.width}x${it.height}" }
+                .sortedBy { it.width.toLong() * it.height.toLong() }
+        }
+        val adaptivePreviewResolution = previewResolutionOptions.minByOrNull {
+            kotlin.math.abs(it.width.toLong() * it.height.toLong() - 1280L * 720L)
+        } ?: Size(1280, 720)
         var selectedResolution by remember(selectedId) { mutableStateOf(resolutionOptions.firstOrNull() ?: Size(1920, 1080)) }
-        val originalResolution = resolutionOptions.firstOrNull { it.width == 4080 && it.height == 3072 }
-            ?: resolutionOptions.maxByOrNull { it.width.toLong() * it.height.toLong() }
+        val originalResolution = resolutionOptions.maxByOrNull { it.width.toLong() * it.height.toLong() }
             ?: selectedResolution
         var originalSizeOutput by remember(selectedId) { mutableStateOf(true) }
         var rawMode by remember(selectedId) { mutableStateOf(false) }
@@ -163,8 +172,8 @@ class MainActivity : ComponentActivity() {
         val zoomMax = (characteristics.get(android.hardware.camera2.CameraCharacteristics.SCALER_AVAILABLE_MAX_DIGITAL_ZOOM) ?: 10f).coerceAtLeast(1f)
         var detailsVisible by remember { mutableStateOf(false) }
         var manualMode by remember { mutableStateOf(false) }
-        var previewWidth by remember { mutableIntStateOf(720) }
-        var previewHeight by remember { mutableIntStateOf(960) }
+        var previewWidth by remember(selectedId) { mutableIntStateOf(adaptivePreviewResolution.width) }
+        var previewHeight by remember(selectedId) { mutableIntStateOf(adaptivePreviewResolution.height) }
         var previewQuality by remember { mutableIntStateOf(45) }
         var previewFps by remember { mutableIntStateOf(30) }
         var phonePreviewEnabled by remember { mutableStateOf(true) }
@@ -206,6 +215,7 @@ class MainActivity : ComponentActivity() {
                     .put("rawMode", rawMode)
                     .put("yuvPreviewMode", yuvPreviewMode)
                     .put("photoSizes", JSONArray(resolutionOptions.map { "${it.width}×${it.height}" }))
+                    .put("previewSizes", JSONArray(previewResolutionOptions.map { "${it.width}×${it.height}" }))
                     .put("iso", isoValue).put("exposureMs", exposureMs).put("focusDiopter", focusDiopter).put("focusMax", focusMax).put("zoom", zoomValue).put("zoomMax", zoomMax).put("temperatureK", tempValue).put("status", status)
                     .put("cameraIds", JSONArray(cameraIds)).put("hiddenIds", JSONArray(hiddenCaps.map { it.id }))
                 "scan_hidden" -> { if (!scanningHidden) { scanningHidden = true; scope.launch(Dispatchers.IO) { val found = CameraCapabilityRepository(this@MainActivity).scanHidden(); kotlinx.coroutines.withContext(Dispatchers.Main) { hiddenCaps = found; scanningHidden = false } } }; response().put("scanning", scanningHidden) }
@@ -219,7 +229,7 @@ class MainActivity : ComponentActivity() {
                 "set_temperature_k" -> { tempValue = command.optDouble("value", tempValue.toDouble()).toFloat().coerceIn(2000f, 8000f); tempText = tempValue.toInt().toString(); autoWhiteBalance = false; manualMode = true; updateActiveControls(); response() }
                 "set_auto" -> { when (command.optString("parameter")) { "iso" -> autoIso = command.optBoolean("enabled", true); "exposure" -> autoExposure = command.optBoolean("enabled", true); "focus" -> autoFocus = command.optBoolean("enabled", true); "white_balance" -> autoWhiteBalance = command.optBoolean("enabled", true) }; manualMode = !(autoIso && autoExposure && autoFocus && autoWhiteBalance); updateActiveControls(); response() }
                 "set_mode" -> { val isManual = command.optBoolean("manual", false); manualMode = isManual; autoIso = !isManual; autoExposure = !isManual; autoFocus = !isManual; autoWhiteBalance = !isManual; updateActiveControls(); response().put("manual", isManual) }
-                "set_preview_config" -> { previewWidth = command.optInt("width", previewWidth).coerceIn(320, 1280); previewHeight = command.optInt("height", previewHeight).coerceIn(320, 1920); previewQuality = command.optInt("quality", previewQuality).coerceIn(30, 90); val requested = command.optInt("fps", previewFps).coerceIn(1, 60); val effective = controller?.setPreviewConfig(previewWidth, previewHeight, previewQuality, requested) ?: requested; previewFps = effective; response().put("previewWidth", previewWidth).put("previewHeight", previewHeight).put("previewQuality", previewQuality).put("previewFps", effective).put("previewFpsRequested", requested) }
+                "set_preview_config" -> { val requestedW = command.optInt("width", previewWidth); val requestedH = command.optInt("height", previewHeight); val matched = previewResolutionOptions.minByOrNull { kotlin.math.abs(it.width.toLong() * it.height.toLong() - requestedW.toLong() * requestedH.toLong()) } ?: adaptivePreviewResolution; previewWidth = matched.width; previewHeight = matched.height; previewQuality = command.optInt("quality", previewQuality).coerceIn(30, 90); val requested = command.optInt("fps", previewFps).coerceIn(1, 30); val effective = controller?.setPreviewConfig(previewWidth, previewHeight, previewQuality, requested) ?: requested; previewFps = effective; response().put("previewWidth", previewWidth).put("previewHeight", previewHeight).put("previewQuality", previewQuality).put("previewFps", effective).put("previewFpsRequested", requested) }
                 "set_preview" -> {
                     val enabled = command.optBoolean("enabled", true)
                     if (command.optString("target", "phone") == "pc") { pcPreviewEnabled = enabled; controller?.setPreviewEnabled(enabled) }
@@ -261,7 +271,7 @@ class MainActivity : ComponentActivity() {
                         if (autoExposure && editingParameter != "曝光") actualExposureMs?.let { exposureMs = it; exposureText = "%.3f".format(it) }
                         if (autoFocus && editingParameter != "對焦") actualFocus?.let { focusDiopter = it; focusText = "%.2f".format(it) }
                         // CONTROL_ZOOM_RATIO is a capture-result value.  On
-                        // Xiaomi logical/physical cameras it can briefly be
+                        // Some OEM logical/physical cameras can briefly report
                         // reported as 1.0 even though the requested crop is
                         // already active.  Never overwrite the user's
                         // requested zoom with that transient result; the
@@ -437,14 +447,13 @@ class MainActivity : ComponentActivity() {
                 selectedResolution = resolutionOptions[index]; originalSizeOutput = false; sizeMenuExpanded = false; if (cameraOn) startWithActiveControls()
             }
             if (previewSizeMenuExpanded) {
-                val sizes = listOf(Size(480, 640), Size(720, 960), Size(900, 1200), Size(1080, 1440))
-                ChoiceDialog("傳送解析度", sizes.map { "${it.width} × ${it.height}" }, { previewSizeMenuExpanded = false }) { index ->
-                    previewWidth = sizes[index].width; previewHeight = sizes[index].height; previewSizeMenuExpanded = false
+                ChoiceDialog("傳送解析度", previewResolutionOptions.map { "${it.width} × ${it.height}" }, { previewSizeMenuExpanded = false }) { index ->
+                    previewWidth = previewResolutionOptions[index].width; previewHeight = previewResolutionOptions[index].height; previewSizeMenuExpanded = false
                     controller?.setPreviewConfig(previewWidth, previewHeight, previewQuality, previewFps)
                 }
             }
             if (previewFpsMenuExpanded) {
-                val rates = listOf(5, 10, 15, 20, 30, 60)
+                val rates = listOf(5, 10, 15, 20, 30)
                 ChoiceDialog("傳送更新率", rates.map { "$it FPS${if (it == 15) " · 省電建議" else ""}" }, { previewFpsMenuExpanded = false }) { index ->
                     val requested = rates[index]; previewFpsMenuExpanded = false
                     val effective = controller?.setPreviewConfig(previewWidth, previewHeight, previewQuality, requested) ?: requested

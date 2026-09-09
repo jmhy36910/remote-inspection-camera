@@ -4,6 +4,8 @@
 
 Android Camera2 相機、手機內建 Web 控制頁與 Windows Python 控制器，可調整相機參數、預覽、拍照及 ROI 位移量測。
 
+預覽最高為 30 FPS；照片與預覽解析度會依目前選取鏡頭的 Camera2 capability 自動產生，不綁定特定手機尺寸。進階 physical camera、RAW、手動控制與實際幀率仍取決於各手機 OEM 實作。
+
 ## 運行環境
 
 - Android 建置：Windows 10/11、JDK 17、Android SDK 35、Gradle 8.11.1
