@@ -518,7 +518,9 @@ class CameraSessionController(private val cameraManager: CameraManager, private 
     private var displayBufferWidth = 0
     private var displayBufferHeight = 0
     private var displaySensorOrientation = 0
-    private val previewRotationDegrees = 90
+    // The validated phone and JPEG paths use the raw TextureView orientation.
+    // The YUV measurement path retains its independent, verified rotation.
+    private val previewRotationDegrees = 0
     private var rotatedYuvBuffer = ByteArray(0)
 
     fun refreshPreviewTransform() {
@@ -530,7 +532,7 @@ class CameraSessionController(private val cameraManager: CameraManager, private 
         val viewHeight = textureView.height
         if (viewWidth <= 0 || viewHeight <= 0 || bufferWidth <= 0 || bufferHeight <= 0) return
         // The activity is portrait locked while this camera's native 0-degree
-        // stream is landscape. Present every preview 90° clockwise.
+        // stream is landscape. Keep the validated phone/JPEG base orientation.
         val rotation = previewRotationDegrees
         val nativeWidth = if (displaySensorOrientation % 180 != 0) bufferHeight.toFloat() else bufferWidth.toFloat()
         val nativeHeight = if (displaySensorOrientation % 180 != 0) bufferWidth.toFloat() else bufferHeight.toFloat()
@@ -555,14 +557,34 @@ class CameraSessionController(private val cameraManager: CameraManager, private 
                 val bitmap = runCatching { textureView.getBitmap(if (streaming) previewWidth else 32, if (streaming) previewHeight else 24) }.getOrNull()
                 if (bitmap == null) { handler.postDelayed(this, 34L); return }
                 if (streaming && onPreviewBytes != null) {
-                    val rotated = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height,
-                        Matrix().apply { postRotate(previewRotationDegrees.toFloat()) }, true)
+                    // The phone preview is portrait. Keep the same upright
+                    // orientation for JPEG transport, but center-crop the
+                    // landscape camera buffer to the requested portrait ratio
+                    // before scaling. This avoids a 16:9-to-9:16 stretch.
+                    val targetWidth = minOf(previewWidth, previewHeight)
+                    val targetHeight = maxOf(previewWidth, previewHeight)
+                    val targetRatio = targetWidth.toFloat() / targetHeight
+                    val sourceRatio = bitmap.width.toFloat() / bitmap.height
+                    val cropWidth: Int
+                    val cropHeight: Int
+                    if (sourceRatio > targetRatio) {
+                        cropHeight = bitmap.height
+                        cropWidth = (cropHeight * targetRatio).toInt().coerceIn(1, bitmap.width)
+                    } else {
+                        cropWidth = bitmap.width
+                        cropHeight = (cropWidth / targetRatio).toInt().coerceIn(1, bitmap.height)
+                    }
+                    val cropLeft = (bitmap.width - cropWidth) / 2
+                    val cropTop = (bitmap.height - cropHeight) / 2
+                    val cropped = Bitmap.createBitmap(bitmap, cropLeft, cropTop, cropWidth, cropHeight)
+                    val encoded = Bitmap.createScaledBitmap(cropped, targetWidth, targetHeight, true)
                     previewOutput.reset()
                     previewOutput.let { out ->
-                        rotated.compress(Bitmap.CompressFormat.JPEG, previewQuality, out)
+                        encoded.compress(Bitmap.CompressFormat.JPEG, previewQuality, out)
                         onPreviewBytes.invoke(out.toByteArray())
                     }
-                    if (rotated !== bitmap) rotated.recycle()
+                    if (encoded !== cropped) encoded.recycle()
+                    if (cropped !== bitmap) cropped.recycle()
                 }
                 if (metering) {
                     val sample = Bitmap.createScaledBitmap(bitmap, 32, 24, false)

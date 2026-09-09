@@ -32,7 +32,7 @@ python -m venv .venv
 
 Web 控制頁第一次也要輸入 PIN，token 僅保存在該瀏覽器的 local storage。TCP 控制、照片事件、SSE 與 MJPEG 都要求 token。傳輸目前仍是私人 LAN 上的純 HTTP/TCP，沒有 TLS 加密，因此不要直接暴露到公網；防火牆若詢問，僅允許私人網路。實際 Camera2 功能依手機 OEM 能力而異。
 
-手機以直向 UI 使用時，這個 App 會將目前鏡頭原始橫向 0° 預覽順時針旋轉 90°，再顯示及傳送。JPEG 與 YUV 預覽都傳送已旋轉的實際像素（本次實機驗證為 `720×1280`），所以 Windows 預設的 `AUTO · PHONE STREAM` **完全不再旋轉**，只依收到的實際寬高等比例 FIT；因此不會再將手機直向畫面二次轉橫。若某個鏡頭的自然方向不同，可用 Windows 的 0°／90°／180°／270° 手動覆寫。
+手機以直向 UI 使用時，手機與 JPEG 預覽使用已驗證的原始 TextureView 方向（不再額外旋轉）。JPEG 會置中裁切原始橫向 buffer 後等比例輸出為直向 `720×1280`，與手機預覽比例一致而不拉伸；YUV 量測預覽保留其已驗證的獨立方向。Windows 預設的 `AUTO · PHONE STREAM` **完全不再旋轉**，只依收到的實際寬高等比例 FIT。若個別鏡頭的自然方向不同，可用 Windows 的 0°／90°／180°／270° 手動覆寫。
 
 Windows 儲存照片時直接寫入手機傳來的原始 JPEG bytes，保留完整解析度與 EXIF Orientation，不重新縮放或壓縮。支援 EXIF 的一般相片檢視器會依方向標記正確顯示直向照片。
 
