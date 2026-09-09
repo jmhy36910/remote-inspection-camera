@@ -175,6 +175,21 @@ class MainActivity : ComponentActivity() {
         val exposureRange = characteristics.get(android.hardware.camera2.CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE)
         val focusMax = characteristics.get(android.hardware.camera2.CameraCharacteristics.LENS_INFO_MINIMUM_FOCUS_DISTANCE) ?: 10f
         val zoomMax = (characteristics.get(android.hardware.camera2.CameraCharacteristics.SCALER_AVAILABLE_MAX_DIGITAL_ZOOM) ?: 10f).coerceAtLeast(1f)
+        val eisModes = characteristics.get(android.hardware.camera2.CameraCharacteristics.CONTROL_AVAILABLE_VIDEO_STABILIZATION_MODES)?.toList().orEmpty()
+        val oisModes = characteristics.get(android.hardware.camera2.CameraCharacteristics.LENS_INFO_AVAILABLE_OPTICAL_STABILIZATION)?.toList().orEmpty()
+        fun eisLabel(mode: Int?) = when (mode) {
+            android.hardware.camera2.CameraMetadata.CONTROL_VIDEO_STABILIZATION_MODE_OFF -> "關"
+            android.hardware.camera2.CameraMetadata.CONTROL_VIDEO_STABILIZATION_MODE_ON -> "開"
+            android.hardware.camera2.CameraMetadata.CONTROL_VIDEO_STABILIZATION_MODE_PREVIEW_STABILIZATION -> "預覽防震"
+            else -> "未回報"
+        }
+        fun oisLabel(mode: Int?) = when (mode) {
+            android.hardware.camera2.CameraMetadata.LENS_OPTICAL_STABILIZATION_MODE_OFF -> "關"
+            android.hardware.camera2.CameraMetadata.LENS_OPTICAL_STABILIZATION_MODE_ON -> "開"
+            else -> "未回報"
+        }
+        var actualEisMode by remember(selectedId) { mutableStateOf<Int?>(null) }
+        var actualOisMode by remember(selectedId) { mutableStateOf<Int?>(null) }
         var detailsVisible by remember { mutableStateOf(false) }
         var manualMode by remember { mutableStateOf(false) }
         var previewWidth by remember(selectedId) { mutableIntStateOf(adaptivePreviewResolution.width) }
@@ -219,6 +234,10 @@ class MainActivity : ComponentActivity() {
                     .put("photoOriginal", originalSizeOutput).put("photoWidth", photoResolution().width).put("photoHeight", photoResolution().height)
                     .put("rawMode", rawMode)
                     .put("yuvPreviewMode", yuvPreviewMode)
+                    .put("eisAvailable", JSONArray(eisModes))
+                    .put("oisAvailable", JSONArray(oisModes))
+                    .put("eisActual", actualEisMode ?: JSONObject.NULL)
+                    .put("oisActual", actualOisMode ?: JSONObject.NULL)
                     .put("photoSizes", JSONArray(resolutionOptions.map { "${it.width}×${it.height}" }))
                     .put("previewSizes", JSONArray(previewResolutionOptions.map { "${it.width}×${it.height}" }))
                     .put("iso", isoValue).put("exposureMs", exposureMs).put("focusDiopter", focusDiopter).put("focusMax", focusMax).put("zoom", zoomValue).put("zoomMax", zoomMax).put("temperatureK", tempValue).put("status", status)
@@ -270,11 +289,13 @@ class MainActivity : ComponentActivity() {
                 }, { dng ->
                     val event = JSONObject().put("version", 1).put("event", "photo").put("mime", "image/x-adobe-dng").put("extension", "dng").put("data", android.util.Base64.encodeToString(dng, android.util.Base64.NO_WRAP))
                     remoteServer?.broadcast(event); webServer?.broadcast(event)
-                }, { actualIso, actualExposureMs, actualFocus, actualZoom ->
+                }, { actualIso, actualExposureMs, actualFocus, actualZoom, actualEis, actualOis ->
                     runOnUiThread {
                         if (autoIso && editingParameter != "ISO") actualIso?.let { isoValue = it.toFloat(); isoText = it.toString() }
                         if (autoExposure && editingParameter != "曝光") actualExposureMs?.let { exposureMs = it; exposureText = "%.3f".format(it) }
                         if (autoFocus && editingParameter != "對焦") actualFocus?.let { focusDiopter = it; focusText = "%.2f".format(it) }
+                        actualEisMode = actualEis
+                        actualOisMode = actualOis
                         // CONTROL_ZOOM_RATIO is a capture-result value.  On
                         // Some OEM logical/physical cameras can briefly report
                         // 1.0 even though the requested crop is
@@ -432,6 +453,8 @@ class MainActivity : ComponentActivity() {
                                     }
                                     if (detailsVisible) {
                                         Text(status, style = MaterialTheme.typography.bodySmall)
+                                        Text("EIS：支援 ${eisModes.joinToString { eisLabel(it) }} · 實際 ${eisLabel(actualEisMode)}", style = MaterialTheme.typography.bodySmall)
+                                        Text("OIS：支援 ${oisModes.joinToString { oisLabel(it) }} · 實際 ${oisLabel(actualOisMode)}", style = MaterialTheme.typography.bodySmall)
                                         Text("無遠端觀看時暫停預覽編碼。省電黑屏可降低螢幕耗電，相機仍保持工作。", style = MaterialTheme.typography.bodySmall)
                                     }
                                 }

@@ -29,7 +29,7 @@ import java.util.Date
 import java.util.Locale
 import java.nio.BufferUnderflowException
 
-class CameraSessionController(private val cameraManager: CameraManager, private val textureView: TextureView, private val onStatus: (String) -> Unit, private val onPhotoBytes: ((ByteArray) -> Unit)? = null, private val onPreviewBytes: ((ByteArray) -> Unit)? = null, private val onRawBytes: ((ByteArray) -> Unit)? = null, private val onActualControls: ((Int?, Float?, Float?, Float?) -> Unit)? = null, private val shouldStreamPreview: () -> Boolean = { true }, private val onPreviewFpsChanged: (Int) -> Unit = {}) {
+class CameraSessionController(private val cameraManager: CameraManager, private val textureView: TextureView, private val onStatus: (String) -> Unit, private val onPhotoBytes: ((ByteArray) -> Unit)? = null, private val onPreviewBytes: ((ByteArray) -> Unit)? = null, private val onRawBytes: ((ByteArray) -> Unit)? = null, private val onActualControls: ((Int?, Float?, Float?, Float?, Int?, Int?) -> Unit)? = null, private val shouldStreamPreview: () -> Boolean = { true }, private val onPreviewFpsChanged: (Int) -> Unit = {}) {
     private val thread = HandlerThread("camera2-phase2").apply { start() }
     private val handler = Handler(thread.looper)
     private var camera: CameraDevice? = null
@@ -259,7 +259,9 @@ class CameraSessionController(private val cameraManager: CameraManager, private 
                         val actualIso = r.get(CaptureResult.SENSOR_SENSITIVITY)
                         val actualExposure = r.get(CaptureResult.SENSOR_EXPOSURE_TIME)?.let { it / 1_000_000f }
                         val actualFocus = r.get(CaptureResult.LENS_FOCUS_DISTANCE)
-                        onActualControls?.invoke(actualIso, actualExposure, actualFocus, actualZoom)
+                        val actualEis = r.get(CaptureResult.CONTROL_VIDEO_STABILIZATION_MODE)
+                        val actualOis = r.get(CaptureResult.LENS_OPTICAL_STABILIZATION_MODE)
+                        onActualControls?.invoke(actualIso, actualExposure, actualFocus, actualZoom, actualEis, actualOis)
                         onStatus("STREAMING · camera=$cameraId · active=${active ?: "n/a"} · zoom=${actualZoom ?: "n/a"} · focal=${lens ?: "n/a"} mm · ISO=${actualIso ?: "auto"} · exp=${actualExposure ?: "auto"}ms")
                     }
                 }
