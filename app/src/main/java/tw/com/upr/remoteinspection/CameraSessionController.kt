@@ -142,10 +142,13 @@ class CameraSessionController(private val cameraManager: CameraManager, private 
         val safeExposure = exposureUs?.let { exposureRange?.let { range -> it.coerceIn((range.lower / 1000L).coerceAtLeast(1L), range.upper / 1000L) } ?: it }
         val safeFocus = focusDiopter?.let { focusMax?.let { max -> it.coerceIn(0f, max) } ?: it }
         currentIso = safeIso; currentExposureNs = safeExposure?.times(1000L); currentFocus = safeFocus; currentZoom = zoom
-        textureView.surfaceTexture?.setDefaultBufferSize(previewWidth, previewHeight)
+        displayBufferWidth = previewWidth
+        displayBufferHeight = previewHeight
+        displaySensorOrientation = sensorOrientation
+        textureView.surfaceTexture?.setDefaultBufferSize(displayBufferWidth, displayBufferHeight)
         val surface = Surface(textureView.surfaceTexture)
         previewSurface = surface
-        textureView.post { applyFitTransform(previewWidth, previewHeight) }
+        refreshPreviewTransform()
         val outputs = mutableListOf<OutputConfiguration>()
         outputs += OutputConfiguration(surface)
         val streamSurface = surface
@@ -493,26 +496,29 @@ class CameraSessionController(private val cameraManager: CameraManager, private 
         }
     }
 
+    private var displayBufferWidth = 0
+    private var displayBufferHeight = 0
+    private var displaySensorOrientation = 0
+
+    fun refreshPreviewTransform() {
+        textureView.post { applyFitTransform(displayBufferWidth, displayBufferHeight) }
+    }
+
     private fun applyFitTransform(bufferWidth: Int, bufferHeight: Int) {
         val viewWidth = textureView.width
         val viewHeight = textureView.height
         if (viewWidth <= 0 || viewHeight <= 0 || bufferWidth <= 0 || bufferHeight <= 0) return
+        val rotation = (textureView.display?.rotation ?: Surface.ROTATION_0) * 90
+        // Camera2's producer already applies the sensor orientation. Undo the
+        // TextureView's default stretch, then fit once inside the entire view.
+        val nativeWidth = if (displaySensorOrientation % 180 != 0) bufferHeight.toFloat() else bufferWidth.toFloat()
+        val nativeHeight = if (displaySensorOrientation % 180 != 0) bufferWidth.toFloat() else bufferHeight.toFloat()
+        val rotatedWidth = if (rotation % 180 != 0) nativeHeight else nativeWidth
+        val rotatedHeight = if (rotation % 180 != 0) nativeWidth else nativeHeight
+        val fit = minOf(viewWidth / rotatedWidth, viewHeight / rotatedHeight)
         val matrix = Matrix()
-        when (textureView.display?.rotation ?: Surface.ROTATION_0) {
-            Surface.ROTATION_90, Surface.ROTATION_270 -> {
-                val viewRect = android.graphics.RectF(0f, 0f, viewWidth.toFloat(), viewHeight.toFloat())
-                val bufferRect = android.graphics.RectF(0f, 0f, bufferHeight.toFloat(), bufferWidth.toFloat())
-                val centerX = viewRect.centerX()
-                val centerY = viewRect.centerY()
-                bufferRect.offset(centerX - bufferRect.centerX(), centerY - bufferRect.centerY())
-                matrix.setRectToRect(viewRect, bufferRect, Matrix.ScaleToFit.CENTER)
-                val scale = minOf(viewHeight.toFloat() / bufferHeight, viewWidth.toFloat() / bufferWidth)
-                matrix.postScale(scale, scale, centerX, centerY)
-                val degrees = if (textureView.display?.rotation == Surface.ROTATION_90) -90f else 90f
-                matrix.postRotate(degrees, centerX, centerY)
-            }
-            Surface.ROTATION_180 -> matrix.postRotate(180f, viewWidth / 2f, viewHeight / 2f)
-        }
+        matrix.setScale(nativeWidth * fit / viewWidth, nativeHeight * fit / viewHeight, viewWidth / 2f, viewHeight / 2f)
+        matrix.postRotate(-rotation.toFloat(), viewWidth / 2f, viewHeight / 2f)
         textureView.setTransform(matrix)
     }
 

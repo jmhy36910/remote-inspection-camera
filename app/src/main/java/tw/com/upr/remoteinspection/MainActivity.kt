@@ -356,26 +356,17 @@ class MainActivity : ComponentActivity() {
                             Text(if (rawMode) "RAW + JPG" else "JPG", style = MaterialTheme.typography.labelMedium)
                         }
                         BoxWithConstraints(Modifier.fillMaxWidth().weight(0.48f).clip(androidx.compose.foundation.shape.RoundedCornerShape(20.dp)).background(Color.Black), contentAlignment = androidx.compose.ui.Alignment.Center) {
-                            val displayDegrees = when (texture?.display?.rotation ?: android.view.Surface.ROTATION_0) {
-                                android.view.Surface.ROTATION_90 -> 90
-                                android.view.Surface.ROTATION_180 -> 180
-                                android.view.Surface.ROTATION_270 -> 270
-                                else -> 0
-                            }
-                            val swapsDimensions = ((sensorOrientation - displayDegrees + 360) % 180) != 0
-                            val ratio = if (swapsDimensions) previewHeight.toFloat() / previewWidth.toFloat() else previewWidth.toFloat() / previewHeight.toFloat()
-                            val fittedWidth = minOf(maxWidth, maxHeight * ratio)
                             AndroidView(
                                 factory = { context -> TextureView(context).apply {
                                     surfaceTextureListener = object : TextureView.SurfaceTextureListener {
                                         override fun onSurfaceTextureAvailable(s: android.graphics.SurfaceTexture, width: Int, height: Int) { surfaceReady = true }
-                                        override fun onSurfaceTextureSizeChanged(s: android.graphics.SurfaceTexture, width: Int, height: Int) {}
+                                        override fun onSurfaceTextureSizeChanged(s: android.graphics.SurfaceTexture, width: Int, height: Int) { controller?.refreshPreviewTransform() }
                                         override fun onSurfaceTextureDestroyed(s: android.graphics.SurfaceTexture): Boolean { surfaceReady = false; controller?.close(); return true }
                                         override fun onSurfaceTextureUpdated(s: android.graphics.SurfaceTexture) {}
                                     }
                                     texture = this
                                 } },
-                                modifier = Modifier.width(fittedWidth).height(fittedWidth / ratio)
+                                modifier = Modifier.fillMaxSize()
                             )
                             if (shutterBlack || !phonePreviewEnabled || !cameraOn) {
                                 Box(Modifier.matchParentSize().background(Color.Black), contentAlignment = androidx.compose.ui.Alignment.Center) {
