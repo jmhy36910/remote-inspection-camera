@@ -28,7 +28,7 @@ The web controller also asks for a PIN once and keeps its token in browser local
 
 JPEG captures the complete TextureView content at the camera's oriented aspect ratio (for example, 720×1280), without cropping, an embedded black canvas, or additional rotation. Windows `AUTO · PHONE STREAM` proportionally FITs the received dimensions until one image edge reaches the window edge, leaving only necessary window margins when aspect ratios differ. YUV and original-size photo capture retain their existing pipelines.
 
-Live JPEG preview is latest-frame-first. Android permits at most one in-flight frame for each flow-control-aware PC, while the PC decode slot retains only the newest received frame. If the network or renderer falls behind, obsolete preview frames are dropped instead of accumulating in TCP or UI queues. Control commands and original-size photo events are not subject to this preview-drop policy.
+Live JPEG preview is latest-frame-first. Android and PC each retain one replaceable newest-frame slot, while network reception, JPEG decoding, and UI rendering run separately. If the network or renderer falls behind, obsolete preview frames are overwritten instead of accumulating in application queues. Control commands and original-size photo events are not subject to this preview-drop policy. A paired PC automatically reconnects on restart using its stored IP and token.
 
 Windows saves the exact JPEG bytes received from the phone, preserving full resolution and EXIF Orientation without resizing or recompression. Standard EXIF-aware photo viewers therefore display portrait captures in the correct orientation.
 

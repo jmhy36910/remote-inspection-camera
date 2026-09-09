@@ -96,6 +96,12 @@ class Controller(tk.Tk):
         self.overall_mode = tk.StringVar(value="Mixed")
         self._build()
         self.after(10, self._preview_tick)
+        self.after(150, self._auto_connect_if_paired)
+
+    def _auto_connect_if_paired(self):
+        """Reconnect after restart only when this PC already has a saved token."""
+        if self.host.get().strip() and self._token():
+            self.connect()
 
     def _build(self):
         top = ttk.Frame(self, padding=10); top.pack(fill="x")
@@ -417,8 +423,6 @@ class Controller(tk.Tk):
         payload = {"version": 1, "requestId": str(self.request_no), "type": command, **kwargs}
         if command != "pair":
             payload["token"] = self._token()
-        if command == "get_state":
-            payload["previewFlowControl"] = True
         try:
             with self.write_lock: self.sock.sendall((json.dumps(payload) + "\n").encode())
             if command == "capture": self.status.set("Capture requested")
@@ -453,12 +457,10 @@ class Controller(tk.Tk):
                     self.after(0, lambda p=path: self.status.set("Photo saved: " + p))
                 elif event.get("event") == "preview":
                     with self.preview_lock:
+                        # Network reception never decodes or renders. Replacing
+                        # this single slot drops stale completed frames while
+                        # the Tk/UI thread is busy with the previous one.
                         self.latest_preview = event["data"]
-                    # No Tk calls here: they wait for the UI thread and prevent
-                    # the receiver from draining the socket during rendering.
-                    ack = {"version": 1, "type": "preview_ack", "token": self._token()}
-                    with self.write_lock:
-                        self.sock.sendall((json.dumps(ack) + "\n").encode())
                 elif event.get("event") == "preview_h264":
                     continue
                 elif False:

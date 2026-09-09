@@ -1,11 +1,20 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+import cv2
+import os
+
+cv2_dir = os.path.dirname(cv2.__file__)
 
 a = Analysis(
     ['windows-controller/remote_camera_control.py'],
     pathex=[],
     binaries=[],
-    datas=[],
+    # OpenCV's bootstrap loader imports these at runtime. Explicitly bundle
+    # them so a clean PyInstaller build remains portable.
+    datas=[
+        (os.path.join(cv2_dir, 'config.py'), 'cv2'),
+        (os.path.join(cv2_dir, 'config-3.py'), 'cv2'),
+    ],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
