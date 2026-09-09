@@ -145,7 +145,7 @@ class CameraSessionController(private val cameraManager: CameraManager, private 
         textureView.surfaceTexture?.setDefaultBufferSize(previewWidth, previewHeight)
         val surface = Surface(textureView.surfaceTexture)
         previewSurface = surface
-        textureView.post { applyFitTransform(previewWidth, previewHeight, sensorOrientation, displayDegrees) }
+        textureView.post { applyFitTransform(previewWidth, previewHeight) }
         val outputs = mutableListOf<OutputConfiguration>()
         outputs += OutputConfiguration(surface)
         val streamSurface = surface
@@ -493,29 +493,26 @@ class CameraSessionController(private val cameraManager: CameraManager, private 
         }
     }
 
-    private fun applyFitTransform(bufferWidth: Int, bufferHeight: Int, sensorOrientation: Int, displayDegrees: Int) {
+    private fun applyFitTransform(bufferWidth: Int, bufferHeight: Int) {
         val viewWidth = textureView.width
         val viewHeight = textureView.height
         if (viewWidth <= 0 || viewHeight <= 0 || bufferWidth <= 0 || bufferHeight <= 0) return
-        val rotation = (sensorOrientation - displayDegrees + 360) % 360
-        val rotatedWidth = if (rotation == 90 || rotation == 270) bufferHeight else bufferWidth
-        val rotatedHeight = if (rotation == 90 || rotation == 270) bufferWidth else bufferHeight
-        val scale = minOf(viewWidth.toFloat() / rotatedWidth, viewHeight.toFloat() / rotatedHeight)
-        val fittedWidth = rotatedWidth * scale
-        val fittedHeight = rotatedHeight * scale
-        val left = (viewWidth - fittedWidth) / 2f
-        val top = (viewHeight - fittedHeight) / 2f
-        val right = left + fittedWidth
-        val bottom = top + fittedHeight
-        val source = floatArrayOf(0f, 0f, viewWidth.toFloat(), 0f, viewWidth.toFloat(), viewHeight.toFloat(), 0f, viewHeight.toFloat())
-        val destination = when (rotation) {
-            90 -> floatArrayOf(right, top, right, bottom, left, bottom, left, top)
-            180 -> floatArrayOf(right, bottom, left, bottom, left, top, right, top)
-            270 -> floatArrayOf(left, bottom, left, top, right, top, right, bottom)
-            else -> floatArrayOf(left, top, right, top, right, bottom, left, bottom)
-        }
         val matrix = Matrix()
-        matrix.setPolyToPoly(source, 0, destination, 0, 4)
+        when (textureView.display?.rotation ?: Surface.ROTATION_0) {
+            Surface.ROTATION_90, Surface.ROTATION_270 -> {
+                val viewRect = android.graphics.RectF(0f, 0f, viewWidth.toFloat(), viewHeight.toFloat())
+                val bufferRect = android.graphics.RectF(0f, 0f, bufferHeight.toFloat(), bufferWidth.toFloat())
+                val centerX = viewRect.centerX()
+                val centerY = viewRect.centerY()
+                bufferRect.offset(centerX - bufferRect.centerX(), centerY - bufferRect.centerY())
+                matrix.setRectToRect(viewRect, bufferRect, Matrix.ScaleToFit.CENTER)
+                val scale = minOf(viewHeight.toFloat() / bufferHeight, viewWidth.toFloat() / bufferWidth)
+                matrix.postScale(scale, scale, centerX, centerY)
+                val degrees = if (textureView.display?.rotation == Surface.ROTATION_90) -90f else 90f
+                matrix.postRotate(degrees, centerX, centerY)
+            }
+            Surface.ROTATION_180 -> matrix.postRotate(180f, viewWidth / 2f, viewHeight / 2f)
+        }
         textureView.setTransform(matrix)
     }
 
