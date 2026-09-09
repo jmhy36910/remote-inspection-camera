@@ -13,6 +13,7 @@ import java.util.concurrent.CopyOnWriteArrayList
 class NetworkControlServer(
     private val port: Int = 8765,
     private val onCommand: (JSONObject) -> JSONObject,
+    private val isAuthorized: (String?) -> Boolean,
     private val onClientCountChanged: (Int) -> Unit = {}
 ) {
     @Volatile private var running = false
@@ -46,13 +47,15 @@ class NetworkControlServer(
             val reader = BufferedReader(InputStreamReader(socket.getInputStream(), Charsets.UTF_8))
             val clientWriter = PrintWriter(socket.getOutputStream(), true)
             writer = clientWriter
-            clients += clientWriter
-            runCatching { onClientCountChanged(clients.size) }
             while (running) {
                 val line = reader.readLine() ?: break
-                val response = runCatching { onCommand(JSONObject(line)) }
+                val command = JSONObject(line)
+                val response = runCatching { onCommand(command) }
                     .getOrElse { JSONObject().put("ok", false).put("error", it.message ?: "invalid request") }
                 writer?.println(response.toString())
+                if (isAuthorized(command.optString("token")) && clients.addIfAbsent(clientWriter)) {
+                    runCatching { onClientCountChanged(clients.size) }
+                }
             }
         } catch (_: Throwable) {
             // A controller closing its socket is a normal disconnect, not an app failure.
@@ -108,5 +111,11 @@ class NetworkControlServer(
         sockets.forEach { runCatching { it.close() } }
         sockets.clear()
         executor.shutdownNow()
+    }
+
+    fun disconnectClients() {
+        sockets.forEach { runCatching { it.close() } }
+        clients.clear()
+        runCatching { onClientCountChanged(0) }
     }
 }

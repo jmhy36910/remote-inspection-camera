@@ -10,12 +10,14 @@ import java.net.Socket
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.Executors
 import android.util.Base64
+import java.net.URLDecoder
 
 /** Browser control endpoint: GET /, GET /events (SSE), POST /control. */
 class WebControlServer(
     private val context: Context,
     private val port: Int = 8787,
-    private val onCommand: (JSONObject) -> JSONObject
+    private val onCommand: (JSONObject) -> JSONObject,
+    private val isAuthorized: (String?) -> Boolean
 ) {
     @Volatile private var running = false
     private var serverSocket: ServerSocket? = null
@@ -51,14 +53,18 @@ class WebControlServer(
             val requestLine = reader.readLine() ?: return
             val parts = requestLine.split(" ")
             val method = parts.getOrNull(0) ?: return
-            val path = parts.getOrNull(1) ?: "/"
+            val target = parts.getOrNull(1) ?: "/"
+            val path = target.substringBefore('?')
+            val token = target.substringAfter('?', "").split('&').firstNotNullOfOrNull { item ->
+                item.takeIf { it.substringBefore('=') == "token" }?.substringAfter('=')?.let { URLDecoder.decode(it, "UTF-8") }
+            }
             var contentLength = 0
             while (true) {
                 val header = reader.readLine() ?: return
                 if (header.isEmpty()) break
                 if (header.startsWith("Content-Length:", ignoreCase = true)) contentLength = header.substringAfter(":").trim().toIntOrNull() ?: 0
             }
-            if (method == "GET" && path == "/events") {
+            if (method == "GET" && path == "/events" && isAuthorized(token)) {
                 val writer = PrintWriter(it.getOutputStream(), true)
                 writer.print("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nCache-Control: no-cache\r\nConnection: keep-alive\r\n\r\n")
                 writer.flush(); eventClients += writer
@@ -71,7 +77,7 @@ class WebControlServer(
                 } finally { eventClients -= writer }
                 return
             }
-            if (method == "GET" && path == "/mjpeg") {
+            if (method == "GET" && path == "/mjpeg" && isAuthorized(token)) {
                 val output = it.getOutputStream()
                 output.write("HTTP/1.1 200 OK\r\nContent-Type: multipart/x-mixed-replace; boundary=frame\r\nCache-Control: no-cache\r\nConnection: close\r\n\r\n".toByteArray())
                 var last: ByteArray? = null
@@ -90,7 +96,9 @@ class WebControlServer(
                 }
                 return
             }
-            val response = if (method == "GET" && path == "/") {
+            val response = if ((path == "/events" || path == "/mjpeg") && !isAuthorized(token)) {
+                "HTTP/1.1 401 Unauthorized\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\n" to "Pairing required".toByteArray()
+            } else if (method == "GET" && path == "/") {
                 context.assets.open("index.html").use { it.readBytes() }.let { bytes ->
                     "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: ${bytes.size}\r\nConnection: close\r\n\r\n" to bytes
                 }
@@ -122,5 +130,10 @@ class WebControlServer(
         sockets.forEach { runCatching { it.close() } }; sockets.clear()
         eventClients.clear(); previewClients.clear(); latestPreviewJpeg = null
         executor.shutdownNow()
+    }
+
+    fun disconnectClients() {
+        sockets.forEach { runCatching { it.close() } }
+        eventClients.clear(); previewClients.clear(); latestPreviewJpeg = null
     }
 }

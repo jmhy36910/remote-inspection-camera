@@ -48,6 +48,8 @@ import java.util.concurrent.TimeUnit
 class MainActivity : ComponentActivity() {
     private var remoteServer: NetworkControlServer? = null
     private var webServer: WebControlServer? = null
+    private lateinit var pairingManager: PairingManager
+    private var pairingLabel by mutableStateOf("尚未配對")
     private var remoteHandler: ((JSONObject) -> JSONObject)? = null
     private var savedScreenBrightness: Float? = null
     private var tcpClients by mutableIntStateOf(0)
@@ -64,44 +66,36 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        pairingManager = PairingManager(this)
+        pairingLabel = if (pairingManager.hasPairedClient()) "已配對 · 此電腦免再次輸入" else "配對 PIN：${pairingManager.createPin()}（5 分鐘）"
         window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_VISIBLE
         if (checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) show() else permission.launch(Manifest.permission.CAMERA)
     }
     private fun show() {
         setContent { Phase2Screen() }
         if (remoteServer == null) {
-            remoteServer = NetworkControlServer(onCommand = { command ->
-                var result = JSONObject().put("version", 1).put("ok", false).put("error", "UI timeout")
-                val done = CountDownLatch(1)
-                runOnUiThread {
-                    result = remoteHandler?.invoke(command)
-                        ?: JSONObject().put("ok", false).put("error", "camera UI is not ready")
-                    done.countDown()
-                }
-                done.await(2, TimeUnit.SECONDS)
-                result
-            }, onClientCountChanged = { count ->
+            remoteServer = NetworkControlServer(onCommand = { command -> authenticatedDispatch(command) }, isAuthorized = pairingManager::isAuthorized, onClientCountChanged = { count ->
                 runOnUiThread {
                     tcpClients = count
-                    if (count > 0) {
-                        if (savedScreenBrightness == null) savedScreenBrightness = window.attributes.screenBrightness
-                        val attributes = window.attributes
-                        attributes.screenBrightness = 0f
-                        window.attributes = attributes
-                    } else {
-                        val previous = savedScreenBrightness
-                        if (previous != null) {
-                            val attributes = window.attributes
-                            attributes.screenBrightness = previous
-                            window.attributes = attributes
-                            savedScreenBrightness = null
-                        }
-                    }
                     updateScreenBrightness()
                 }
             }).also { it.start() }
-            webServer = WebControlServer(this) { command -> dispatchRemote(command) }.also { it.start() }
+            webServer = WebControlServer(this, onCommand = { command -> authenticatedDispatch(command) }, isAuthorized = pairingManager::isAuthorized).also { it.start() }
         }
+    }
+    private fun authenticatedDispatch(command: JSONObject): JSONObject {
+        val requestId = command.optString("requestId")
+        if (command.optString("type") == "pair") {
+            val token = pairingManager.pair(command.optString("pin"))
+            return if (token != null) {
+                runOnUiThread { pairingLabel = "已配對 · 此電腦免再次輸入" }
+                JSONObject().put("version", 1).put("requestId", requestId).put("ok", true).put("token", token)
+            } else JSONObject().put("version", 1).put("requestId", requestId).put("ok", false).put("error", "PIN 無效或已過期")
+        }
+        if (!pairingManager.isAuthorized(command.optString("token"))) {
+            return JSONObject().put("version", 1).put("requestId", requestId).put("ok", false).put("error", "pairing_required")
+        }
+        return dispatchRemote(command)
     }
     private fun dispatchRemote(command: JSONObject): JSONObject {
         var result = JSONObject().put("version", 1).put("ok", false).put("error", "UI timeout")
@@ -328,6 +322,7 @@ class MainActivity : ComponentActivity() {
                             Column(Modifier.weight(1f)) {
                                 Text("Machine Vision", style = MaterialTheme.typography.titleLarge)
                                 Text(if (tcpClients > 0) "PC 已連線 · $tcpClients" else "Camera · 檢測與遠端拍攝", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                                Text(pairingLabel, style = MaterialTheme.typography.labelSmall)
                             }
                             TextButton(onClick = { sleepScreen = true; updateScreenBrightness() }) { Text("省電") }
                             Box {
@@ -348,6 +343,17 @@ class MainActivity : ComponentActivity() {
                                     HorizontalDivider()
                                     DropdownMenuItem(text = { Text("RAW / DNG · ${if (rawMode) "開" else "關"}") }, onClick = { rawMode = !rawMode; optionsMenuExpanded = false; if (cameraOn) startWithActiveControls() })
                                     DropdownMenuItem(text = { Text("YUV 灰階預覽 · ${if (yuvPreviewMode) "開" else "關"}") }, onClick = { yuvPreviewMode = !yuvPreviewMode; optionsMenuExpanded = false; if (cameraOn) startWithActiveControls() })
+                                    HorizontalDivider()
+                                    DropdownMenuItem(text = { Text("新增電腦／瀏覽器配對 PIN") }, onClick = {
+                                        pairingLabel = "配對 PIN：${pairingManager.createPin()}（5 分鐘）"
+                                        optionsMenuExpanded = false
+                                    })
+                                    DropdownMenuItem(text = { Text("撤銷所有配對並產生新 PIN") }, onClick = {
+                                        pairingLabel = "配對 PIN：${pairingManager.createPin(resetExisting = true)}（5 分鐘）"
+                                        remoteServer?.disconnectClients()
+                                        webServer?.disconnectClients()
+                                        optionsMenuExpanded = false
+                                    })
                                     HorizontalDivider()
                                     DropdownMenuItem(text = { Text("傳送尺寸 · ${previewWidth}×${previewHeight}") }, onClick = { previewSizeMenuExpanded = true; optionsMenuExpanded = false })
                                     DropdownMenuItem(text = { Text("更新率 · $previewFps FPS") }, onClick = { previewFpsMenuExpanded = true; optionsMenuExpanded = false })

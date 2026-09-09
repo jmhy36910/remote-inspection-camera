@@ -22,7 +22,9 @@ python -m venv .venv
 .\.venv\Scripts\python -m pip install -r requirements.txt
 ```
 
-Create `local.properties` for the SDK if needed. No API key, database, or `.env` is required. Install `app/build/outputs/apk/debug/app-debug.apk`, place phone and PC on the same private network, then run `python windows-controller/remote_camera_control.py` and enter the address shown by the app. OEM Camera2 support varies.
+Create `local.properties` for the SDK if needed. No API key, database, or `.env` is required. Install `app/build/outputs/apk/debug/app-debug.apk`, place phone and PC on the same private network, then run `python windows-controller/remote_camera_control.py`. Enter the phone's current IP (no fixed IP is embedded), connect, enter the six-digit PIN shown by the app, and select **Pair once**. The PIN expires after five minutes and becomes invalid immediately after success. A random token is stored in `%LOCALAPPDATA%\RemoteInspectionCamera\config.json`, so the same Windows user connecting to this app installation normally pairs only once, even if the phone's DHCP address changes. Generate another PIN from the app menu for a new device without revoking existing devices. A new PC, deleted local settings, reinstalled/cleared Android app data, or **Revoke all pairings** requires pairing again.
+
+The web controller also asks for a PIN once and keeps its token in browser local storage. TCP commands, photo events, SSE, and MJPEG all require the token. Transport is still unencrypted HTTP/TCP on the private LAN, so do not expose these ports directly to the Internet. OEM Camera2 support varies.
 
 ## Build and test
 

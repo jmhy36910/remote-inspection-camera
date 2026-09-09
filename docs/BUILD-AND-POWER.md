@@ -16,7 +16,7 @@ Android Kotlin 位於 `app/src/main/java/tw/com/upr/remoteinspection/`：
 
 `app/src/main/assets/index.html` 是網頁端；`windows-controller/remote_camera_control.py` 包含 Tkinter、獨立預覽視窗、解碼及 ROI 追蹤。`Machine Vision Camera Controller.spec` 為 PyInstaller 資料夾打包設定。`tools/make_manual.py` 產生操作 PDF。`dist*`、`build`、`app/build` 為輸出或舊版，不是主要原始碼。
 
-PC 連線為手機 IP:8765；網頁為 `http://手機IP:8787/`。ADB 偵錯埠由手機設定提供，不能混用。
+PC 連線為手機目前的 IP:8765；網頁為 `http://手機IP:8787/`。程式不預填固定 IP，兩種控制端皆須以 App 顯示的一次性 PIN 首次配對。ADB 偵錯埠由手機設定提供，不能混用。
 
 ## Android 編譯與安裝
 

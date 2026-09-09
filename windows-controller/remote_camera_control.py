@@ -70,8 +70,11 @@ class Controller(tk.Tk):
         self.preview_times = []
         self.preview_update_pending = False
         self.request_no = 0
-        self.host = tk.StringVar(value="192.168.194.186")
+        self.config_path = os.path.join(os.environ.get("LOCALAPPDATA", os.path.expanduser("~")), "RemoteInspectionCamera", "config.json")
+        self.local_config = self._load_local_config()
+        self.host = tk.StringVar(value=self.local_config.get("last_host", ""))
         self.port = tk.StringVar(value="8765")
+        self.pair_pin = tk.StringVar(value="")
         self.status = tk.StringVar(value="Disconnected")
         self.camera = tk.StringVar(value="0")
         self.camera_selection_dirty = False
@@ -99,6 +102,11 @@ class Controller(tk.Tk):
         ttk.Entry(top, textvariable=self.port, width=7).pack(side="left", padx=5)
         ttk.Button(top, text="Connect", command=self.connect).pack(side="left", padx=5)
         ttk.Button(top, text="Disconnect", command=self.disconnect).pack(side="left")
+        pairing = ttk.Frame(self, padding=(10, 0, 10, 4)); pairing.pack(fill="x")
+        ttk.Label(pairing, text="Pairing PIN").pack(side="left")
+        ttk.Entry(pairing, textvariable=self.pair_pin, width=10, show="•").pack(side="left", padx=5)
+        ttk.Button(pairing, text="Pair once", command=self.pair).pack(side="left")
+        ttk.Label(pairing, text="Token is saved for this Windows user.").pack(side="left", padx=8)
         camera_bar = ttk.Frame(self, padding=(10, 0, 10, 4)); camera_bar.pack(fill="x")
         ttk.Label(camera_bar, text="Camera").pack(side="left")
         self.camera_combo = ttk.Combobox(camera_bar, textvariable=self.camera, width=12, state="readonly", values=("0",))
@@ -280,9 +288,15 @@ class Controller(tk.Tk):
         self.focus()
 
     def connect(self):
+        host = self.host.get().strip()
+        if not host:
+            messagebox.showerror("Connection", "Enter the phone IP shown by the app.")
+            return
         try:
-            self.sock = socket.create_connection((self.host.get(), int(self.port.get())), timeout=3)
+            self.sock = socket.create_connection((host, int(self.port.get())), timeout=3)
             self.sock.settimeout(3); self.status.set("Connected")
+            self.local_config["last_host"] = host
+            self._save_local_config()
             self.reader = self.sock.makefile("r", encoding="utf-8")
             threading.Thread(target=self._listen, daemon=True).start()
             self.send("get_state")
@@ -366,10 +380,38 @@ class Controller(tk.Tk):
         self.send("set_raw_mode", enabled=self.raw_mode_var.get())
         self.status.set("Inspection RAW: " + ("ON" if self.raw_mode_var.get() else "OFF"))
 
+    def _load_local_config(self):
+        try:
+            with open(self.config_path, "r", encoding="utf-8") as source:
+                value = json.load(source)
+                return value if isinstance(value, dict) else {}
+        except (OSError, ValueError):
+            return {}
+
+    def _save_local_config(self):
+        folder = os.path.dirname(self.config_path)
+        os.makedirs(folder, exist_ok=True)
+        temporary = self.config_path + ".tmp"
+        with open(temporary, "w", encoding="utf-8") as output:
+            json.dump(self.local_config, output, ensure_ascii=True, indent=2)
+        os.replace(temporary, self.config_path)
+
+    def _token(self):
+        return self.local_config.get("token", "")
+
+    def pair(self):
+        pin = self.pair_pin.get().strip()
+        if len(pin) != 6 or not pin.isdigit():
+            messagebox.showerror("Pairing", "Enter the 6-digit PIN shown by the phone.")
+            return
+        self.send("pair", pin=pin)
+
     def send(self, command, **kwargs):
         if not self.sock: return
         self.request_no += 1
         payload = {"version": 1, "requestId": str(self.request_no), "type": command, **kwargs}
+        if command != "pair":
+            payload["token"] = self._token()
         try:
             with self.write_lock: self.sock.sendall((json.dumps(payload) + "\n").encode())
             if command == "capture": self.status.set("Capture requested")
@@ -380,7 +422,15 @@ class Controller(tk.Tk):
         try:
             while self.sock and self.reader:
                 event = json.loads(self.reader.readline())
-                if event.get("requestId") and event.get("cameraIds") is not None:
+                if event.get("token"):
+                    self.local_config["token"] = event["token"]
+                    self._save_local_config()
+                    self.after(0, lambda: self.pair_pin.set(""))
+                    self.after(0, lambda: self.status.set("Paired. This PC will reconnect without a PIN."))
+                    self.send("get_state")
+                elif event.get("error") == "pairing_required":
+                    self.after(0, lambda: self.status.set("Pairing required: enter the phone PIN once."))
+                elif event.get("requestId") and event.get("cameraIds") is not None:
                     ids = [str(x) for x in event.get("cameraIds", []) + event.get("hiddenIds", [])]
                     self.after(0, lambda values=tuple(ids): self.camera_combo.configure(values=values))
                     if not self.camera_selection_dirty:
