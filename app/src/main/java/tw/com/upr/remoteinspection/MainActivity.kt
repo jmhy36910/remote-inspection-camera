@@ -286,6 +286,7 @@ class MainActivity : ComponentActivity() {
                 }, shouldStreamPreview = { remoteServer?.hasClients() == true || webServer?.hasPreviewClients() == true }, onPreviewFpsChanged = { effective ->
                     runOnUiThread { if (previewFps != effective) previewFps = effective }
                 })
+                c.setPreviewConfig(previewWidth, previewHeight, previewQuality, previewFps)
                 controller = c
                 onDispose { c.release(); controller = null }
             }

@@ -142,8 +142,15 @@ class CameraSessionController(private val cameraManager: CameraManager, private 
         val safeExposure = exposureUs?.let { exposureRange?.let { range -> it.coerceIn((range.lower / 1000L).coerceAtLeast(1L), range.upper / 1000L) } ?: it }
         val safeFocus = focusDiopter?.let { focusMax?.let { max -> it.coerceIn(0f, max) } ?: it }
         currentIso = safeIso; currentExposureNs = safeExposure?.times(1000L); currentFocus = safeFocus; currentZoom = zoom
-        displayBufferWidth = previewWidth
-        displayBufferHeight = previewHeight
+        // Select an actual supported pair; never clamp width and height independently.
+        val supportedPreviewSizes = map?.getOutputSizes(android.graphics.SurfaceTexture::class.java).orEmpty()
+        val requestedRatio = previewWidth.toDouble() / previewHeight
+        val previewSize = supportedPreviewSizes.minWithOrNull(
+            compareBy<android.util.Size> { kotlin.math.abs(it.width.toDouble() / it.height - requestedRatio) }
+                .thenBy { kotlin.math.abs(it.width.toLong() * it.height - previewWidth.toLong() * previewHeight) }
+        ) ?: throw IllegalStateException("Camera reports no SurfaceTexture preview sizes")
+        displayBufferWidth = previewSize.width
+        displayBufferHeight = previewSize.height
         displaySensorOrientation = sensorOrientation
         textureView.surfaceTexture?.setDefaultBufferSize(displayBufferWidth, displayBufferHeight)
         val surface = Surface(textureView.surfaceTexture)
@@ -355,8 +362,10 @@ class CameraSessionController(private val cameraManager: CameraManager, private 
     }
 
     fun setPreviewConfig(width: Int, height: Int, quality: Int, fps: Int): Int {
-        previewWidth = width.coerceIn(320, 1280)
-        previewHeight = height.coerceIn(320, 1920)
+        if (width > 0 && height > 0) {
+            previewWidth = width
+            previewHeight = height
+        }
         previewQuality = quality.coerceIn(30, 90)
         previewFps = fps.coerceIn(1, 30)
         resolvePreviewFps()
