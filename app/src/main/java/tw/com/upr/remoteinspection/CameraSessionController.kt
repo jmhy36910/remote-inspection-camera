@@ -319,15 +319,15 @@ class CameraSessionController(private val cameraManager: CameraManager, private 
         }
         // Measurement preview intentionally uses only the Y plane. Neutral
         // chroma produces a grayscale image. Rotate the luma plane with the
-        // same counter-clockwise orientation as the phone and JPEG stream.
+        // same clockwise orientation as the phone and JPEG stream.
         val rotatedWidth = height
         val rotatedHeight = width
         if (rotatedYuvBuffer.size != rotatedWidth * rotatedHeight * 3 / 2) {
             rotatedYuvBuffer = ByteArray(rotatedWidth * rotatedHeight * 3 / 2) { 128.toByte() }
         }
         for (sourceY in 0 until height) for (sourceX in 0 until width) {
-            val targetX = sourceY
-            val targetY = width - 1 - sourceX
+            val targetX = height - 1 - sourceY
+            val targetY = sourceX
             rotatedYuvBuffer[targetY * rotatedWidth + targetX] = nv21[sourceY * width + sourceX]
         }
         previewOutput.reset()
@@ -518,7 +518,7 @@ class CameraSessionController(private val cameraManager: CameraManager, private 
     private var displayBufferWidth = 0
     private var displayBufferHeight = 0
     private var displaySensorOrientation = 0
-    private val previewRotationDegrees = 270
+    private val previewRotationDegrees = 90
     private var rotatedYuvBuffer = ByteArray(0)
 
     fun refreshPreviewTransform() {
@@ -530,7 +530,7 @@ class CameraSessionController(private val cameraManager: CameraManager, private 
         val viewHeight = textureView.height
         if (viewWidth <= 0 || viewHeight <= 0 || bufferWidth <= 0 || bufferHeight <= 0) return
         // The activity is portrait locked while this camera's native 0-degree
-        // stream is landscape. Present every preview 90° counter-clockwise.
+        // stream is landscape. Present every preview 90° clockwise.
         val rotation = previewRotationDegrees
         val nativeWidth = if (displaySensorOrientation % 180 != 0) bufferHeight.toFloat() else bufferWidth.toFloat()
         val nativeHeight = if (displaySensorOrientation % 180 != 0) bufferWidth.toFloat() else bufferHeight.toFloat()

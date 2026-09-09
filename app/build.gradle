@@ -5,7 +5,7 @@ plugins {
 }
 
 android { namespace 'tw.com.upr.remoteinspection'; compileSdk 36
-    defaultConfig { applicationId 'tw.com.upr.remoteinspection'; minSdk 28; targetSdk 36; versionCode 5; versionName '1.2.3' }
+    defaultConfig { applicationId 'tw.com.upr.remoteinspection'; minSdk 28; targetSdk 36; versionCode 6; versionName '1.2.4' }
     compileOptions { sourceCompatibility JavaVersion.VERSION_1_8; targetCompatibility JavaVersion.VERSION_1_8 }
 }
 
