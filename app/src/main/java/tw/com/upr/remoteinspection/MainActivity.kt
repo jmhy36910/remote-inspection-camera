@@ -67,7 +67,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
         pairingManager = PairingManager(this)
-        pairingLabel = if (pairingManager.hasPairedClient()) "已配對 · 此電腦免再次輸入" else "配對 PIN：${pairingManager.createPin()}（5 分鐘）"
+        pairingLabel = "配對 PIN：${pairingManager.createPin()}（5 分鐘）"
         window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_VISIBLE
         if (checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) show() else permission.launch(Manifest.permission.CAMERA)
     }
@@ -94,6 +94,9 @@ class MainActivity : ComponentActivity() {
         }
         if (!pairingManager.isAuthorized(command.optString("token"))) {
             return JSONObject().put("version", 1).put("requestId", requestId).put("ok", false).put("error", "pairing_required")
+        }
+        runOnUiThread {
+            if (!pairingLabel.startsWith("已配對")) pairingLabel = "已配對 · 電腦已驗證"
         }
         return dispatchRemote(command)
     }

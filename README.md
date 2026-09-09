@@ -28,7 +28,7 @@ python -m venv .venv
 
 ## 使用方式
 
-安裝並啟動 App，允許相機與網路權限，確認手機和電腦在同一私人網路，再執行 `python windows-controller/remote_camera_control.py`。輸入手機目前的 IP（程式不內建固定 IP）、連線，再輸入 App 顯示的 6 位數 PIN 並按 **Pair once**。PIN 有效 5 分鐘且成功後立即失效；Windows 會將隨機 token 保存在目前使用者的 `%LOCALAPPDATA%\RemoteInspectionCamera\config.json`，同一個 Windows 使用者連接這個 App 安裝日後不需重複輸入 PIN，即使手機 DHCP 位址改變也可沿用。新裝置可從 App 選單另外產生 PIN，不會撤銷既有裝置；更換電腦、清除本機設定、重裝／清除 App 資料，或選擇「撤銷所有配對」後需重新配對。
+安裝並啟動 App，允許相機與網路權限，確認手機和電腦在同一私人網路，再執行 `python windows-controller/remote_camera_control.py`。App 每次啟動會先顯示新的 6 位數 PIN；只有電腦以既有 token 驗證成功，或新電腦以 PIN 配對成功後，畫面才改為「已配對」。輸入手機目前的 IP（程式不內建固定 IP）、連線，再輸入 PIN 並按 **Pair once**。PIN 有效 5 分鐘且成功後立即失效；Windows 會將隨機 token 保存在目前使用者的 `%LOCALAPPDATA%\RemoteInspectionCamera\config.json`，同一個 Windows 使用者連接這個 App 安裝日後不需重複輸入 PIN，即使手機 DHCP 位址改變也可沿用。新裝置可從 App 選單另外產生 PIN，不會撤銷既有裝置；更換電腦、清除本機設定、重裝／清除 App 資料，或選擇「撤銷所有配對」後需重新配對。
 
 Web 控制頁第一次也要輸入 PIN，token 僅保存在該瀏覽器的 local storage。TCP 控制、照片事件、SSE 與 MJPEG 都要求 token。傳輸目前仍是私人 LAN 上的純 HTTP/TCP，沒有 TLS 加密，因此不要直接暴露到公網；防火牆若詢問，僅允許私人網路。實際 Camera2 功能依手機 OEM 能力而異。
 
