@@ -26,7 +26,7 @@ Create `local.properties` for the SDK if needed. No API key, database, or `.env`
 
 The web controller also asks for a PIN once and keeps its token in browser local storage. TCP commands, photo events, SSE, and MJPEG all require the token. Transport is still unencrypted HTTP/TCP on the private LAN, so do not expose these ports directly to the Internet. OEM Camera2 support varies.
 
-The Windows preview defaults to `AUTO · PHONE PORTRAIT`: a received landscape JPEG is rotated to portrait first, then fitted proportionally using the post-rotation dimensions. An already portrait JPEG is not rotated again. Manual 0/90/180/270-degree overrides remain available for cameras with a different orientation.
+For the portrait phone UI, the app rotates the current camera's native landscape 0-degree preview 90 degrees counter-clockwise before displaying and streaming it. Both JPEG and YUV previews therefore carry the already-rotated pixels (verified on the connected device as `720×1280`). Windows defaults to `AUTO · PHONE STREAM`, which performs **no rotation at all** and only FITs the received dimensions proportionally; it cannot rotate a portrait phone stream back to landscape. Manual 0/90/180/270-degree overrides remain available for a camera with a different natural orientation.
 
 Windows saves the exact JPEG bytes received from the phone, preserving full resolution and EXIF Orientation without resizing or recompression. Standard EXIF-aware photo viewers therefore display portrait captures in the correct orientation.
 

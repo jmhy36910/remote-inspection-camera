@@ -13,11 +13,11 @@ class FitDimensionsTest(unittest.TestCase):
     def test_wide_canvas_uses_height_limit(self):
         self.assertEqual((711, 400), Controller._fit_dimensions(1920, 1080, 1000, 400))
 
-    def test_phone_portrait_auto_rotates_landscape_input_once(self):
-        self.assertEqual(90, Controller._effective_rotation(1280, 720, "AUTO · PHONE PORTRAIT", 0))
+    def test_phone_stream_auto_does_not_rotate_landscape_input(self):
+        self.assertEqual(0, Controller._effective_rotation(1280, 720, "AUTO · PHONE STREAM", 0))
 
-    def test_phone_portrait_auto_does_not_rotate_portrait_input(self):
-        self.assertEqual(0, Controller._effective_rotation(720, 1280, "AUTO · PHONE PORTRAIT", 0))
+    def test_phone_stream_auto_does_not_rotate_portrait_input(self):
+        self.assertEqual(0, Controller._effective_rotation(720, 1280, "AUTO · PHONE STREAM", 0))
 
 
 if __name__ == "__main__":

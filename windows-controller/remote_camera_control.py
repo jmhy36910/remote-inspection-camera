@@ -135,8 +135,8 @@ class Controller(tk.Tk):
         ttk.Checkbutton(photo_bar, text="Inspection RAW", variable=self.raw_mode_var, command=self.apply_raw_mode).pack(side="left", padx=6)
         rotate_bar = ttk.Frame(self, padding=(10, 0, 10, 4)); rotate_bar.pack(fill="x")
         ttk.Label(rotate_bar, text="PC rotation").pack(side="left")
-        self.rotation_var = tk.StringVar(value="AUTO · PHONE PORTRAIT")
-        ttk.Combobox(rotate_bar, textvariable=self.rotation_var, state="readonly", width=24, values=("AUTO · PHONE PORTRAIT", "0°", "90° clockwise", "180°", "270° clockwise")).pack(side="left", padx=5)
+        self.rotation_var = tk.StringVar(value="AUTO · PHONE STREAM")
+        ttk.Combobox(rotate_bar, textvariable=self.rotation_var, state="readonly", width=24, values=("AUTO · PHONE STREAM", "0°", "90° clockwise", "180°", "270° clockwise")).pack(side="left", padx=5)
         self.rotation_combo = rotate_bar.winfo_children()[-1]
         self.rotation_combo.bind("<<ComboboxSelected>>", self.apply_rotation)
         ttk.Label(self, textvariable=self.status, padding=(10, 0)).pack(anchor="w")
@@ -643,7 +643,7 @@ class Controller(tk.Tk):
     def apply_rotation(self, _event=None):
         labels = {"0°": 0, "90° clockwise": 90, "180°": 180, "270° clockwise": 270}
         selected = labels.get(self.rotation_var.get(), 0)
-        if selected == self.rotation_degrees and self.rotation_var.get() != "AUTO · PHONE PORTRAIT":
+        if selected == self.rotation_degrees and self.rotation_var.get() != "AUTO · PHONE STREAM":
             return
         self.rotation_degrees = selected
         self.clear_roi()
@@ -653,9 +653,9 @@ class Controller(tk.Tk):
 
     @staticmethod
     def _effective_rotation(width, height, mode, manual_degrees):
-        """The phone UI is portrait; rotate only landscape frames in AUTO."""
-        if mode == "AUTO · PHONE PORTRAIT":
-            return 90 if width > height else 0
+        """The phone already normalizes stream orientation; AUTO never rotates."""
+        if mode == "AUTO · PHONE STREAM":
+            return 0
         return manual_degrees
 
     def _set_display_transform(self, _frame_width, _frame_height):

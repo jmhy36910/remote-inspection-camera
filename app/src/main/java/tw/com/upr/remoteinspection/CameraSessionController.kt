@@ -317,13 +317,23 @@ class CameraSessionController(private val cameraManager: CameraManager, private 
                 y.position(rowStart); y.get(nv21, out, width); out += width
             } else for (col in 0 until width) { nv21[out++] = y.get(rowStart + col * yPixelStride) }
         }
-        // Measurement preview intentionally uses only the Y plane.  Neutral
-        // chroma produces a grayscale image, avoiding colour processing and
-        // reducing both conversion work and network payload relevance.
+        // Measurement preview intentionally uses only the Y plane. Neutral
+        // chroma produces a grayscale image. Rotate the luma plane with the
+        // same counter-clockwise orientation as the phone and JPEG stream.
+        val rotatedWidth = height
+        val rotatedHeight = width
+        if (rotatedYuvBuffer.size != rotatedWidth * rotatedHeight * 3 / 2) {
+            rotatedYuvBuffer = ByteArray(rotatedWidth * rotatedHeight * 3 / 2) { 128.toByte() }
+        }
+        for (sourceY in 0 until height) for (sourceX in 0 until width) {
+            val targetX = sourceY
+            val targetY = width - 1 - sourceX
+            rotatedYuvBuffer[targetY * rotatedWidth + targetX] = nv21[sourceY * width + sourceX]
+        }
         previewOutput.reset()
         previewOutput.let { outStream ->
-            android.graphics.YuvImage(nv21, android.graphics.ImageFormat.NV21, width, height, null)
-                .compressToJpeg(Rect(0, 0, width, height), previewQuality, outStream)
+            android.graphics.YuvImage(rotatedYuvBuffer, android.graphics.ImageFormat.NV21, rotatedWidth, rotatedHeight, null)
+                .compressToJpeg(Rect(0, 0, rotatedWidth, rotatedHeight), previewQuality, outStream)
             onPreviewBytes.invoke(outStream.toByteArray())
         }
     }
@@ -508,6 +518,8 @@ class CameraSessionController(private val cameraManager: CameraManager, private 
     private var displayBufferWidth = 0
     private var displayBufferHeight = 0
     private var displaySensorOrientation = 0
+    private val previewRotationDegrees = 270
+    private var rotatedYuvBuffer = ByteArray(0)
 
     fun refreshPreviewTransform() {
         textureView.post { applyFitTransform(displayBufferWidth, displayBufferHeight) }
@@ -517,9 +529,9 @@ class CameraSessionController(private val cameraManager: CameraManager, private 
         val viewWidth = textureView.width
         val viewHeight = textureView.height
         if (viewWidth <= 0 || viewHeight <= 0 || bufferWidth <= 0 || bufferHeight <= 0) return
-        val rotation = (textureView.display?.rotation ?: Surface.ROTATION_0) * 90
-        // Camera2's producer already applies the sensor orientation. Undo the
-        // TextureView's default stretch, then fit once inside the entire view.
+        // The activity is portrait locked while this camera's native 0-degree
+        // stream is landscape. Present every preview 90° counter-clockwise.
+        val rotation = previewRotationDegrees
         val nativeWidth = if (displaySensorOrientation % 180 != 0) bufferHeight.toFloat() else bufferWidth.toFloat()
         val nativeHeight = if (displaySensorOrientation % 180 != 0) bufferWidth.toFloat() else bufferHeight.toFloat()
         val rotatedWidth = if (rotation % 180 != 0) nativeHeight else nativeWidth
@@ -527,7 +539,7 @@ class CameraSessionController(private val cameraManager: CameraManager, private 
         val fit = minOf(viewWidth / rotatedWidth, viewHeight / rotatedHeight)
         val matrix = Matrix()
         matrix.setScale(nativeWidth * fit / viewWidth, nativeHeight * fit / viewHeight, viewWidth / 2f, viewHeight / 2f)
-        matrix.postRotate(-rotation.toFloat(), viewWidth / 2f, viewHeight / 2f)
+        matrix.postRotate(rotation.toFloat(), viewWidth / 2f, viewHeight / 2f)
         textureView.setTransform(matrix)
     }
 
@@ -543,11 +555,14 @@ class CameraSessionController(private val cameraManager: CameraManager, private 
                 val bitmap = runCatching { textureView.getBitmap(if (streaming) previewWidth else 32, if (streaming) previewHeight else 24) }.getOrNull()
                 if (bitmap == null) { handler.postDelayed(this, 34L); return }
                 if (streaming && onPreviewBytes != null) {
+                    val rotated = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height,
+                        Matrix().apply { postRotate(previewRotationDegrees.toFloat()) }, true)
                     previewOutput.reset()
                     previewOutput.let { out ->
-                        bitmap.compress(Bitmap.CompressFormat.JPEG, previewQuality, out)
+                        rotated.compress(Bitmap.CompressFormat.JPEG, previewQuality, out)
                         onPreviewBytes.invoke(out.toByteArray())
                     }
+                    if (rotated !== bitmap) rotated.recycle()
                 }
                 if (metering) {
                     val sample = Bitmap.createScaledBitmap(bitmap, 32, 24, false)
